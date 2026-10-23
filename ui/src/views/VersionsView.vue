@@ -7,7 +7,7 @@ import { formatBytes, formatNumber, formatStamp } from "../format";
 import IssueList from "../components/IssueList.vue";
 
 const props = defineProps<{ path: string; title: string; destination: string }>();
-const emit = defineEmits<{ done: [] }>();
+const emit = defineEmits<{ done: []; restore: [stamp: string] }>();
 
 const stamps = ref<VersionStamp[] | null>(null);
 const error = ref<Issue | null>(null);
@@ -57,6 +57,7 @@ onMounted(refresh);
       <li v-for="s in stamps" :key="s.name">
         <span>{{ t("versions.stamp", { when: formatStamp(s.name), files: formatNumber(s.files), size: formatBytes(s.bytes) }) }}</span>
         <span class="list__actions">
+          <button type="button" @click="emit('restore', s.name)">{{ t("versions.restore") }}</button>
           <button type="button" @click="api.openFolder(path, 'version', s.name)">{{ t("versions.open") }}</button>
           <button type="button" class="danger" @click="remove(s)">{{ t("versions.delete") }}</button>
         </span>

@@ -83,6 +83,9 @@ fn main() {
                 unsaved: AtomicBool::new(false),
                 launch_request: Mutex::new(nucifraga_core::schedule::run_request(std::env::args())),
                 schedule_issues: Mutex::new(Vec::new()),
+                desktop: app.path().desktop_dir()?,
+                restore: Arc::new(Mutex::new(None)),
+                last_restore_folder: Arc::new(Mutex::new(None)),
             });
             // 工作排程器跟模板同步。要跑 schtasks 好幾次，放到背景，不擋視窗出來。
             let handle = app.handle().clone();
@@ -116,6 +119,11 @@ fn main() {
             commands::quit_app,
             commands::set_background_mode,
             commands::take_launch_request,
+            commands::restore_browse,
+            commands::restore_preview,
+            commands::restore_start,
+            commands::restore_cancel,
+            commands::open_restored_folder,
             commands::get_profile,
             commands::save_profile,
             commands::reset_destination,

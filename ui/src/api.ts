@@ -157,6 +157,43 @@ export interface Diagnostics {
   settingsFile: string;
   fallbackReports: string;
   backgroundMode: boolean;
+  desktop: string;
+}
+
+// ── 還原（ADR-0011） ──
+export type RestoreSource = { kind: "current" } | { kind: "version"; stamp: string };
+export type RestoreTarget = { kind: "newFolder"; folder: string } | { kind: "original" };
+export type OnConflict = "skip" | "keepBoth";
+
+export interface RestoreEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
+}
+
+export interface RestorePreview {
+  files: number;
+  bytes: number;
+  conflicts: number;
+  conflictSample: string[];
+  folder?: string | null;
+}
+
+export interface RestoreProgress {
+  done: number;
+  total: number;
+  bytes: number;
+  bytesTotal: number;
+}
+
+export interface RestoreOutcome {
+  restored: number;
+  renamed: number;
+  skipped: number;
+  bytes: number;
+  issues: Issue[];
+  cancelled: boolean;
+  folder?: string | null;
 }
 
 export type LockAnswer = "retry" | "skip" | "skipAndRemember" | "cancel";
@@ -177,6 +214,23 @@ export const api = {
   quitApp: () => invoke<void>("quit_app"),
   setBackgroundMode: (on: boolean) => invoke<void>("set_background_mode", { on }),
   takeLaunchRequest: () => invoke<string | null>("take_launch_request"),
+  restoreBrowse: (path: string, source: RestoreSource, rel: string) =>
+    invoke<RestoreEntry[]>("restore_browse", { path, source, rel }),
+  restorePreview: (path: string, source: RestoreSource, selections: string[], target: RestoreTarget) =>
+    invoke<RestorePreview>("restore_preview", { path, source, selections, target }),
+  restoreStart: (
+    path: string,
+    source: RestoreSource,
+    selections: string[],
+    target: RestoreTarget,
+    onConflict: OnConflict,
+  ) => invoke<void>("restore_start", { path, source, selections, target, onConflict }),
+  restoreCancel: () => invoke<void>("restore_cancel"),
+  openRestoredFolder: () => invoke<void>("open_restored_folder"),
+  onRestoreProgress: (f: (p: RestoreProgress) => void): Promise<UnlistenFn> =>
+    listen<RestoreProgress>("restore-progress", (e) => f(e.payload)),
+  onRestoreFinished: (f: (o: RestoreOutcome) => void): Promise<UnlistenFn> =>
+    listen<RestoreOutcome>("restore-finished", (e) => f(e.payload)),
   onLaunchRequest: (f: (path: string) => void): Promise<UnlistenFn> =>
     listen<string>("launch-request", (e) => f(e.payload)),
   forgetProfile: (path: string) => invoke<void>("forget_profile", { path }),

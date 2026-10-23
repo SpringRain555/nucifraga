@@ -18,6 +18,7 @@ pub mod longpath;
 pub mod plan;
 pub mod profile;
 pub mod report;
+pub mod restore;
 pub mod run;
 pub mod scan;
 pub mod schedule;

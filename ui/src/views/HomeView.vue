@@ -16,6 +16,7 @@ const emit = defineEmits<{
   versions: [path: string, title: string];
   settings: [];
   view: [path: string, title: string];
+  restore: [path: string, title: string];
   folder: [current: string | null, suggested: string, inFolder: number];
 }>();
 
@@ -214,6 +215,14 @@ defineExpose({ refresh });
               @click="emit('versions', c.path, c.title)"
             >
               {{ t("home.card.versions") }}
+            </button>
+            <button
+              type="button"
+              class="link"
+              :disabled="!c.destinationConnected || c.busy"
+              @click="emit('restore', c.path, c.title)"
+            >
+              {{ t("home.card.restore") }}
             </button>
           </div>
         </template>

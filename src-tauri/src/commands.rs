@@ -11,10 +11,11 @@ use nucifraga_core::jsonedit::quote;
 use nucifraga_core::library;
 use nucifraga_core::profile::{self, PathPolicy, Profile, RootSpec};
 use nucifraga_core::report::{self, Issue};
+use nucifraga_core::restore::{self, OnConflict, Source, Target};
 use nucifraga_core::run::LockDecision;
 use nucifraga_core::schedule::{self, Schedule};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::runctl::{self, Active, Answer};
 use crate::settings::{self, ProfileRef, Settings};
@@ -33,6 +34,12 @@ pub struct AppState {
     pub launch_request: Mutex<Option<String>>,
     /// 啟動時同步工作排程器遇到的問題（`APP-007`），顯示在首頁。
     pub schedule_issues: Mutex<Vec<Issue>>,
+    /// 還原新資料夾的預設上層：桌面。
+    pub desktop: PathBuf,
+    /// 進行中的還原的取消旗標；`None` ＝ 沒有在還原。
+    pub restore: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+    /// 上一次還原建的資料夾：「打開還原的資料夾」只能開這一個。
+    pub last_restore_folder: Arc<Mutex<Option<PathBuf>>>,
 }
 
 type R<T> = Result<T, Issue>;
@@ -287,6 +294,8 @@ pub struct Diagnostics {
     settings_file: String,
     fallback_reports: String,
     background_mode: bool,
+    /// 還原到新資料夾時預設的上層（桌面）。
+    desktop: String,
 }
 
 /// 設定頁的「關於與診斷」。
@@ -302,6 +311,7 @@ pub fn diagnostics(app: AppHandle, state: State<'_, AppState>) -> Diagnostics {
             .lock()
             .map(|s| s.background_mode)
             .unwrap_or(true),
+        desktop: state.desktop.display().to_string(),
     }
 }
 
@@ -642,6 +652,147 @@ pub fn cancel_run(state: State<'_, AppState>, then_quit: bool) -> R<()> {
 pub fn history(state: State<'_, AppState>, path: String) -> R<Vec<serde_json::Value>> {
     let p = known_profile(&state, &path)?;
     Ok(report::list_reports(&p.destination, 100))
+}
+
+// ── 還原（ADR-0011） ──
+
+fn restore_stamp() -> String {
+    time::OffsetDateTime::now_local()
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+        .format(time::macros::format_description!(
+            "[year][month][day]-[hour][minute]"
+        ))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn restore_browse(
+    state: State<'_, AppState>,
+    path: String,
+    source: Source,
+    rel: String,
+) -> R<Vec<restore::Entry>> {
+    let p = known_profile(&state, &path)?;
+    restore::browse(&p.destination, &source, &rel)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePreview {
+    files: usize,
+    bytes: u64,
+    conflicts: usize,
+    /// 撞名的前幾個（`<來源名>/<相對路徑>`），給畫面列出來。
+    conflict_sample: Vec<String>,
+    folder: Option<String>,
+}
+
+#[tauri::command]
+pub fn restore_preview(
+    state: State<'_, AppState>,
+    path: String,
+    source: Source,
+    selections: Vec<String>,
+    target: Target,
+) -> R<RestorePreview> {
+    let p = known_profile(&state, &path)?;
+    let plan = restore::plan(&p, &source, &selections, &target, &restore_stamp())?;
+    Ok(RestorePreview {
+        files: plan.items.len(),
+        bytes: plan.bytes,
+        conflicts: plan.conflicts.len(),
+        conflict_sample: plan
+            .conflicts
+            .iter()
+            .take(20)
+            .map(|&i| plan.items[i].rel.clone())
+            .collect(),
+        folder: plan.folder.map(|f| f.display().to_string()),
+    })
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreProgress {
+    done: u64,
+    total: u64,
+    bytes: u64,
+    bytes_total: u64,
+}
+
+/// 開始還原。備份進行中（這個 app 或別的程式在用這顆碟）不能還原：備份會在途中搬動 `current\` 的檔案。
+#[tauri::command]
+pub fn restore_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    source: Source,
+    selections: Vec<String>,
+    target: Target,
+    on_conflict: OnConflict,
+) -> R<()> {
+    let p = known_profile(&state, &path)?;
+    if state.run.lock().map_err(internal)?.is_some() || fsops::run_in_progress(&p.destination) {
+        return Err(Issue::new(Code::Dst007, &[]));
+    }
+    let plan = restore::plan(&p, &source, &selections, &target, &restore_stamp())?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut slot = state.restore.lock().map_err(internal)?;
+        if slot.is_some() {
+            return Err(internal("已經有一次還原在進行中"));
+        }
+        *slot = Some(cancel.clone());
+    }
+    let slot = state.restore.clone();
+    let last = state.last_restore_folder.clone();
+    std::thread::spawn(move || {
+        let total = plan.items.len() as u64;
+        let bytes_total = plan.bytes;
+        let mut last_emit = std::time::Instant::now();
+        let outcome = restore::execute(&plan, on_conflict, &cancel, &mut |done, bytes| {
+            if done == total || last_emit.elapsed() >= std::time::Duration::from_millis(150) {
+                last_emit = std::time::Instant::now();
+                let _ = app.emit(
+                    "restore-progress",
+                    RestoreProgress {
+                        done,
+                        total,
+                        bytes,
+                        bytes_total,
+                    },
+                );
+            }
+        });
+        if let Ok(mut g) = last.lock() {
+            *g = plan.folder.clone();
+        }
+        if let Ok(mut g) = slot.lock() {
+            *g = None;
+        }
+        let _ = app.emit("restore-finished", outcome);
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_cancel(state: State<'_, AppState>) -> R<()> {
+    if let Some(c) = state.restore.lock().map_err(internal)?.as_ref() {
+        c.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+/// 「打開還原的資料夾」：只開上一次還原建的那一個。
+#[tauri::command]
+pub fn open_restored_folder(state: State<'_, AppState>) -> R<()> {
+    let folder = state
+        .last_restore_folder
+        .lock()
+        .map_err(internal)?
+        .clone()
+        .ok_or_else(|| internal("這次沒有建新的資料夾"))?;
+    explorer(&folder)
 }
 
 #[tauri::command]

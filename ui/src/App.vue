@@ -12,6 +12,7 @@ import HistoryView from "./views/HistoryView.vue";
 import VersionsView from "./views/VersionsView.vue";
 import FolderView from "./views/FolderView.vue";
 import SettingsView from "./views/SettingsView.vue";
+import RestoreView from "./views/RestoreView.vue";
 import LeaveDialog from "./components/LeaveDialog.vue";
 
 // 畫面不多，用一個狀態切換就夠，不引 vue-router（ui-workflows.md「畫面」）。
@@ -23,7 +24,8 @@ type Screen =
   | { name: "edit"; path: string; creating: boolean }
   | { name: "run"; path: string; title: string; attach: boolean }
   | { name: "history"; path: string; title: string }
-  | { name: "versions"; path: string; title: string; destination: string };
+  | { name: "versions"; path: string; title: string; destination: string }
+  | { name: "restore"; path: string; title: string; stamp: string | null };
 
 const screen = ref<Screen>({ name: "loading" });
 const version = ref("");
@@ -145,6 +147,7 @@ onMounted(async () => {
       @history="(path, title) => go({ name: 'history', path, title })"
       @versions="openVersions"
       @settings="go({ name: 'settings' })"
+      @restore="(path, title) => go({ name: 'restore', path, title, stamp: null })"
       @folder="(current, suggested, inFolder) => go({ name: 'folder', current, suggested, inFolder, back: 'home' })"
     />
     <SettingsView
@@ -172,6 +175,14 @@ onMounted(async () => {
       :path="screen.path"
       :title="screen.title"
       :destination="screen.destination"
+      @done="goHome"
+      @restore="(stamp) => screen.name === 'versions' && go({ name: 'restore', path: screen.path, title: screen.title, stamp })"
+    />
+    <RestoreView
+      v-else-if="screen.name === 'restore'"
+      :path="screen.path"
+      :title="screen.title"
+      :stamp="screen.stamp"
       @done="goHome"
     />
 

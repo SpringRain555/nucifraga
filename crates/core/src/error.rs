@@ -48,6 +48,8 @@ codes! {
     Path001 => "PATH-001", Path002 => "PATH-002", Path003 => "PATH-003",
     Eng001 => "ENG-001", Eng002 => "ENG-002", Eng003 => "ENG-003", Eng004 => "ENG-004",
     Eng005 => "ENG-005", Eng010 => "ENG-010",
+    Rst001 => "RST-001", Rst002 => "RST-002", Rst003 => "RST-003", Rst004 => "RST-004",
+    Rst005 => "RST-005",
     Phn001 => "PHN-001", Phn002 => "PHN-002", Phn003 => "PHN-003", Phn004 => "PHN-004",
     Phn005 => "PHN-005",
     App001 => "APP-001", App002 => "APP-002", App003 => "APP-003", App004 => "APP-004",
