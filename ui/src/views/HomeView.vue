@@ -113,9 +113,23 @@ defineExpose({ refresh });
       </div>
     </section>
 
+    <!-- 「進行中」與「模板」是兩區：上面是正在發生的事，下面是可以按的模板 -->
+    <div v-if="home" class="section-head">
+      <h2>{{ t("home.templates") }}</h2>
+      <button v-if="home.profiles.length > 0" type="button" @click="createNew">{{ t("home.createNew") }}</button>
+    </div>
+
     <div v-if="home && home.profiles.length === 0" class="panel empty">
       <h2>{{ t("home.empty.title") }}</h2>
       <p>{{ t("home.empty.body") }}</p>
+      <div class="actions">
+        <button type="button" class="primary" @click="createNew">{{ t("home.createNew") }}</button>
+      </div>
+      <!-- 加入現有的模板檔是少用的動作，平常放在設定頁；只有第一次（還沒有模板）時在這裡也給 -->
+      <p class="muted">
+        {{ t("home.empty.haveFile") }}
+        <button type="button" class="link" @click="addExisting">{{ t("home.addExisting") }}</button>
+      </p>
     </div>
 
     <ul v-if="home" class="cards">
@@ -199,10 +213,6 @@ defineExpose({ refresh });
       </li>
     </ul>
 
-    <div class="actions">
-      <button type="button" class="primary" @click="createNew">{{ t("home.createNew") }}</button>
-      <button type="button" @click="addExisting">{{ t("home.addExisting") }}</button>
-    </div>
   </section>
 </template>
 
@@ -257,6 +267,9 @@ defineExpose({ refresh });
   margin: 0 0 6px;
   font-size: 1rem;
   color: var(--muted);
+}
+.active {
+  margin-bottom: 24px;
 }
 .active__body {
   display: flex;
@@ -320,5 +333,23 @@ defineExpose({ refresh });
 }
 .empty {
   margin-bottom: 20px;
+  display: grid;
+  gap: 12px;
+}
+.empty h2,
+.empty p {
+  margin: 0;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 10px;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--muted);
 }
 </style>

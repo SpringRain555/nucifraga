@@ -174,6 +174,15 @@ const stampOfReport = computed(() => run.finished?.report.runId);
         <button v-if="report.outcome === 'failed' || report.outcome === 'cancelled'" type="button" @click="startRun(path, title)">
           {{ t("result.retry") }}
         </button>
+        <!-- 有檔案這次沒備份到（被佔用、一直在變動）：再跑一次就只處理它們，其餘的都會被算成「沒有變更」 -->
+        <button
+          v-else-if="report.counts.skipped > 0"
+          type="button"
+          :title="t('result.retrySkippedHelp')"
+          @click="startRun(path, title)"
+        >
+          {{ t("result.retrySkipped", { count: formatNumber(report.counts.skipped) }) }}
+        </button>
         <button v-if="report.outcome !== 'failed'" type="button" @click="api.openFolder(path, 'current')">
           {{ t("result.openCurrent") }}
         </button>
@@ -189,6 +198,11 @@ const stampOfReport = computed(() => run.finished?.report.runId);
 .run {
   display: grid;
   gap: 14px;
+}
+/* grid 子元素預設不會比內容窄：一條很長的路徑會把整個面板撐出視窗。 */
+.run > *,
+.progress > * {
+  min-width: 0;
 }
 .run h2 {
   margin: 0;

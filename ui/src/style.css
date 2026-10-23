@@ -35,6 +35,11 @@
   box-sizing: border-box;
 }
 
+/* 有沒有垂直捲軸，置中的版面都在同一個位置：否則內容長的頁面（設定）會比首頁往左偏一個捲軸寬 */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: var(--bg);

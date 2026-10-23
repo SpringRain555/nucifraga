@@ -22,7 +22,9 @@ export const zhTW = {
   "leave.stay": "繼續編輯",
 
   "home.empty.title": "還沒有任何模板",
-  "home.empty.body": "模板記錄「要備份哪些資料夾、排除什麼、備份到哪顆碟」。加入一份之後，每次備份只要按一下。",
+  "home.empty.body": "模板記錄「要備份哪些資料夾、排除什麼、備份到哪顆碟」。建立一份之後，每次備份只要按一下。",
+  "home.empty.haveFile": "已經有模板檔（例如另一個工具也在讀的那一份）？",
+  "home.templates": "模板",
   "home.addExisting": "加入現有的模板檔",
   "home.createNew": "建立新模板",
   "home.card.start": "開始備份",
@@ -181,6 +183,8 @@ export const zhTW = {
   "result.hideFiles": "收起檔案",
   "result.done": "回到首頁",
   "result.retry": "再備份一次",
+  "result.retrySkipped": "補備份略過的 {count} 個檔案",
+  "result.retrySkippedHelp": "再跑一次這份模板：已經備份好的檔案會直接跳過，只處理這次略過的。被佔用的檔案會先問你。",
 
   "history.title": "紀錄：{title}",
   "history.empty": "這顆備份碟上還沒有任何紀錄。",
