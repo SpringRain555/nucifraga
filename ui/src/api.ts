@@ -135,6 +135,13 @@ export interface VersionStamp {
   bytes: number;
 }
 
+export interface Diagnostics {
+  version: string;
+  identifier: string;
+  settingsFile: string;
+  fallbackReports: string;
+}
+
 export type LockAnswer = "retry" | "skip" | "skipAndRemember" | "cancel";
 
 export const api = {
@@ -147,6 +154,10 @@ export const api = {
   setProfilesFolder: (path: string, moveExisting: boolean) =>
     invoke<Issue[]>("set_profiles_folder", { path, moveExisting }),
   openProfilesFolder: () => invoke<void>("open_profiles_folder"),
+  diagnostics: () => invoke<Diagnostics>("diagnostics"),
+  openAppFolder: (which: "settings" | "reports") => invoke<void>("open_app_folder", { which }),
+  setUnsaved: (unsaved: boolean) => invoke<void>("set_unsaved", { unsaved }),
+  quitApp: () => invoke<void>("quit_app"),
   forgetProfile: (path: string) => invoke<void>("forget_profile", { path }),
   getProfile: (path: string) => invoke<ProfileForm>("get_profile", { path }),
   saveProfile: (path: string, form: ProfileForm) => invoke<void>("save_profile", { path, form }),
@@ -162,7 +173,8 @@ export const api = {
     invoke<void>("open_folder", { path, place, stamp }),
   onRunEvent: (f: (e: RunEvent) => void): Promise<UnlistenFn> => listen<RunEvent>("run-event", (e) => f(e.payload)),
   onRunFinished: (f: (e: Finished) => void): Promise<UnlistenFn> => listen<Finished>("run-finished", (e) => f(e.payload)),
-  onCloseRequested: (f: () => void): Promise<UnlistenFn> => listen("close-requested", () => f()),
+  onCloseRequested: (f: (e: { running: boolean }) => void): Promise<UnlistenFn> =>
+    listen<{ running: boolean }>("close-requested", (e) => f(e.payload)),
 };
 
 /// 後端回的錯誤一定是 Issue；萬一不是（例如 IPC 本身壞掉），包成一個 ENG-002 的樣子顯示。

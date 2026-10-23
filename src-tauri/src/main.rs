@@ -12,6 +12,7 @@ mod runctl;
 mod settings;
 
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -35,6 +36,12 @@ fn app_info(app: AppHandle) -> AppInfo {
         version: nucifraga_core::VERSION,
         identifier: app.config().identifier.clone(),
     }
+}
+
+#[derive(Serialize, Clone)]
+struct CloseRequested {
+    /// true：問「取消備份並關閉」；false：問「有未儲存的修改」。
+    running: bool,
 }
 
 /// 前端畫出第一個畫面之後呼叫。寫就緒標記，讓 `tools\Launch.ps1` 知道可以退場了。
@@ -69,17 +76,19 @@ fn main() {
                 suggested_folder: app.path().document_dir()?.join("Nucifraga"),
                 fallback_reports: local.join("reports"),
                 run: Arc::new(Mutex::new(None)),
+                unsaved: AtomicBool::new(false),
             });
             Ok(())
         })
-        // 備份進行中按關閉：先攔下來問（app-lifecycle.md 第 5 題）。
+        // 備份進行中、或模板有未儲存的修改時按關閉：先攔下來問（app-lifecycle.md 第 5 題）。
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
                 let running = state.run.lock().map(|g| g.is_some()).unwrap_or(false);
-                if running {
+                let unsaved = state.unsaved.load(Ordering::Relaxed);
+                if running || unsaved {
                     api.prevent_close();
-                    let _ = window.emit("close-requested", ());
+                    let _ = window.emit("close-requested", CloseRequested { running });
                 }
             }
         })
@@ -92,6 +101,10 @@ fn main() {
             commands::forget_profile,
             commands::set_profiles_folder,
             commands::open_profiles_folder,
+            commands::diagnostics,
+            commands::open_app_folder,
+            commands::set_unsaved,
+            commands::quit_app,
             commands::get_profile,
             commands::save_profile,
             commands::reset_destination,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { ask, open } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api, asIssue, type Home, type Issue } from "../api";
 import { t } from "../i18n/zh-TW";
 import { formatDate } from "../format";
@@ -11,9 +11,10 @@ const emit = defineEmits<{
   start: [path: string, title: string];
   edit: [path: string];
   create: [folder: string];
-  folder: [current: string | null, suggested: string, inFolder: number];
   history: [path: string, title: string];
   versions: [path: string, title: string];
+  settings: [];
+  folder: [current: string | null, suggested: string, inFolder: number];
 }>();
 
 const home = ref<Home | null>(null);
@@ -42,44 +43,16 @@ async function addExisting() {
 }
 
 function createNew() {
-  if (home.value?.profilesFolder) emit("create", home.value.profilesFolder);
-  else changeFolder(); // 設定檔損毀重建之後會走到這裡：先選資料夾
-}
-
-function changeFolder() {
   const h = home.value;
   if (!h) return;
-  emit("folder", h.profilesFolder ?? null, h.suggestedFolder, h.profiles.filter((p) => !p.external).length);
+  if (h.profilesFolder) emit("create", h.profilesFolder);
+  // 設定檔損毀重建之後會走到這裡：先選資料夾
+  else emit("folder", null, h.suggestedFolder, 0);
 }
 
 async function openFolder() {
   try {
     await api.openProfilesFolder();
-  } catch (e) {
-    error.value = asIssue(e);
-  }
-}
-
-async function forget(path: string, title: string) {
-  const yes = await ask(t("home.card.forgetConfirm", { title }), {
-    title: t("app.title"),
-    kind: "warning",
-    okLabel: t("home.card.forgetButton"),
-    cancelLabel: t("home.card.keep"),
-  });
-  if (!yes) return;
-  await api.forgetProfile(path);
-  await refresh();
-}
-
-async function relocate(oldPath: string) {
-  const path = await open({ title: t("home.pickProfile"), filters: jsonFilter, multiple: false, directory: false });
-  if (typeof path !== "string") return;
-  try {
-    await api.addProfile(path);
-    await api.forgetProfile(oldPath);
-    error.value = null;
-    await refresh();
   } catch (e) {
     error.value = asIssue(e);
   }
@@ -102,63 +75,78 @@ defineExpose({ refresh });
 
     <ul v-if="home" class="cards">
       <li v-for="c in home.profiles" :key="c.path" class="panel card">
-        <div class="card__main">
+        <header class="card__head">
           <h2>
             {{ c.title }}
             <span v-if="c.external" class="tag">{{ t("home.card.external") }}</span>
           </h2>
-          <template v-if="c.error">
-            <p class="bad">{{ t("home.card.broken") }}</p>
-            <IssueList :issues="[c.error]" />
-          </template>
-          <template v-else>
-            <p class="muted">{{ t("home.card.destination", { path: c.destination ?? "" }) }}</p>
-            <p class="muted">{{ t("home.card.sources", { count: c.roots.length }) }}</p>
-            <p v-if="!c.destinationConnected" class="warn">⚠ {{ t("home.card.notConnected") }}</p>
-            <p v-else-if="c.last">
-              {{ t("home.card.last", { when: formatDate(c.last.finishedAt) }) }}
-              <OutcomeBadge :outcome="c.last.outcome" />
-            </p>
-            <p v-else class="muted">{{ t("home.card.never") }}</p>
-          </template>
-        </div>
-        <div class="card__actions">
           <template v-if="!c.error">
+            <span :class="c.destinationConnected ? 'ok' : 'warn'" class="status">
+              {{ c.destinationConnected ? "●" : "○" }}
+              {{ c.destinationConnected ? t("home.card.connected") : t("home.card.notConnected") }}
+            </span>
             <button type="button" class="primary" :disabled="home.running" @click="emit('start', c.path, c.title)">
               {{ t("home.card.start") }}
             </button>
-            <button type="button" @click="emit('edit', c.path)">{{ t("home.card.edit") }}</button>
-            <button type="button" :disabled="!c.destinationConnected" @click="emit('history', c.path, c.title)">
+          </template>
+        </header>
+
+        <template v-if="c.error">
+          <p class="bad">{{ t("home.card.broken") }}</p>
+          <IssueList :issues="[c.error]" />
+          <p class="muted path">{{ c.path }}</p>
+          <div class="card__foot">
+            <!-- 外部模板到設定頁「重新指定」或移除；資料夾裡的就是那個檔案，打開資料夾自己修 -->
+            <button v-if="c.external" type="button" class="link" @click="emit('settings')">
+              {{ t("home.card.fixInSettings") }}
+            </button>
+            <button v-else type="button" class="link" @click="openFolder">{{ t("home.openFolder") }}</button>
+          </div>
+        </template>
+
+        <template v-else>
+          <dl class="facts">
+            <dt>{{ t("home.card.sources") }}</dt>
+            <dd>
+              <ul class="paths">
+                <li v-for="r in c.roots" :key="r" class="path">{{ r }}</li>
+              </ul>
+            </dd>
+            <dt>{{ t("home.card.destination") }}</dt>
+            <dd class="path">{{ c.destination }}</dd>
+            <dt>{{ t("home.card.lastLabel") }}</dt>
+            <dd>
+              <template v-if="c.last">
+                {{ formatDate(c.last.finishedAt) }}
+                <OutcomeBadge :outcome="c.last.outcome" />
+              </template>
+              <span v-else-if="!c.destinationConnected" class="muted">{{ t("home.card.unknownWhileDisconnected") }}</span>
+              <span v-else class="muted">{{ t("home.card.never") }}</span>
+            </dd>
+            <dt>{{ t("home.card.file") }}</dt>
+            <dd class="path muted">{{ c.path }}</dd>
+          </dl>
+          <div class="card__foot">
+            <button type="button" class="link" @click="emit('edit', c.path)">{{ t("home.card.edit") }}</button>
+            <button type="button" class="link" :disabled="!c.destinationConnected" @click="emit('history', c.path, c.title)">
               {{ t("home.card.history") }}
             </button>
-            <button type="button" :disabled="!c.destinationConnected" @click="emit('versions', c.path, c.title)">
+            <button
+              type="button"
+              class="link"
+              :disabled="!c.destinationConnected"
+              @click="emit('versions', c.path, c.title)"
+            >
               {{ t("home.card.versions") }}
             </button>
-          </template>
-          <!-- 資料夾裡的模板沒有「重新指定」與「從清單移除」：首頁列的就是資料夾內容，要移除就把檔案搬走 -->
-          <button v-else-if="c.external" type="button" class="primary" @click="relocate(c.path)">
-            {{ t("home.card.relocate") }}
-          </button>
-          <button v-if="c.external" type="button" class="link" @click="forget(c.path, c.title)">
-            {{ t("home.card.forget") }}
-          </button>
-        </div>
+          </div>
+        </template>
       </li>
     </ul>
 
     <div class="actions">
-      <button type="button" class="primary" @click="addExisting">{{ t("home.addExisting") }}</button>
-      <button type="button" @click="createNew">{{ t("home.createNew") }}</button>
-    </div>
-
-    <div v-if="home?.profilesFolder" class="folder">
-      <p class="muted">{{ t("home.folder", { path: home.profilesFolder }) }}</p>
-      <div class="actions">
-        <button type="button" class="link" @click="openFolder">{{ t("home.openFolder") }}</button>
-        <button type="button" class="link" :disabled="home.running" @click="changeFolder">
-          {{ t("home.changeFolder") }}
-        </button>
-      </div>
+      <button type="button" class="primary" @click="createNew">{{ t("home.createNew") }}</button>
+      <button type="button" @click="addExisting">{{ t("home.addExisting") }}</button>
     </div>
   </section>
 </template>
@@ -172,26 +160,62 @@ defineExpose({ refresh });
   gap: 14px;
 }
 .card {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  overflow: hidden;
 }
-.card h2 {
-  margin: 0 0 4px;
+.card__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 16px 20px 0;
+}
+.card__head h2 {
+  margin: 0;
   font-size: 1.2rem;
+  margin-right: auto;
 }
-.card p {
-  margin: 2px 0;
+.card > p,
+.card > :deep(.issues) {
+  margin: 0 20px;
 }
-.card__actions {
+.status {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0 20px;
+}
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  margin: 0;
+  min-width: 0;
+}
+.paths {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.path {
+  word-break: break-all;
+  font-family: "Cascadia Mono", Consolas, "Microsoft JhengHei UI", monospace;
+  font-size: 0.92rem;
+}
+.card__foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
-}
-.empty {
-  margin-bottom: 20px;
+  gap: 20px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 .tag {
   font-size: 0.8rem;
@@ -203,15 +227,7 @@ defineExpose({ refresh });
   margin-left: 8px;
   vertical-align: middle;
 }
-.folder {
-  margin-top: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  align-items: center;
-}
-.folder p {
-  margin: 0;
-  word-break: break-all;
+.empty {
+  margin-bottom: 20px;
 }
 </style>

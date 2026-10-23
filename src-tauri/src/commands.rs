@@ -2,7 +2,7 @@
 //! 能碰的只有「模板資料夾裡的或已經記住的外部模板」與「那份模板的備份碟底下」。
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nucifraga_core::error::Code;
@@ -26,6 +26,8 @@ pub struct AppState {
     pub suggested_folder: PathBuf,
     pub fallback_reports: PathBuf,
     pub run: Arc<Mutex<Option<Active>>>,
+    /// 模板編輯畫面有沒有未儲存的修改：有的話關視窗前先問（ui-workflows「模板編輯」）。
+    pub unsaved: AtomicBool,
 }
 
 type R<T> = Result<T, Issue>;
@@ -252,6 +254,60 @@ pub fn open_profiles_folder(state: State<'_, AppState>) -> R<()> {
         ));
     }
     explorer(&folder)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostics {
+    version: &'static str,
+    identifier: String,
+    settings_file: String,
+    fallback_reports: String,
+}
+
+/// 設定頁的「關於與診斷」。
+#[tauri::command]
+pub fn diagnostics(app: AppHandle, state: State<'_, AppState>) -> Diagnostics {
+    Diagnostics {
+        version: nucifraga_core::VERSION,
+        identifier: app.config().identifier.clone(),
+        settings_file: state.settings_file.display().to_string(),
+        fallback_reports: state.fallback_reports.display().to_string(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AppFolder {
+    Settings,
+    Reports,
+}
+
+/// 打開 app 自己的資料夾（設定檔所在、找不到備份碟時的報告）。只有這兩個，前端不能指定路徑。
+#[tauri::command]
+pub fn open_app_folder(state: State<'_, AppState>, which: AppFolder) -> R<()> {
+    let dir = match which {
+        AppFolder::Settings => state
+            .settings_file
+            .parent()
+            .ok_or_else(|| internal("設定檔沒有上層資料夾"))?
+            .to_path_buf(),
+        AppFolder::Reports => state.fallback_reports.clone(),
+    };
+    // 兩個都是 app 自己的資料夾：還沒用過就先建，免得按了沒反應。
+    std::fs::create_dir_all(&dir).map_err(internal)?;
+    explorer(&dir)
+}
+
+#[tauri::command]
+pub fn set_unsaved(state: State<'_, AppState>, unsaved: bool) {
+    state.unsaved.store(unsaved, Ordering::Relaxed);
+}
+
+/// 使用者在「有未儲存的修改」那一問選了離開之後呼叫。
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 fn explorer(target: &Path) -> R<()> {
