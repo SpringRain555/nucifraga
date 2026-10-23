@@ -2,6 +2,12 @@
 
 每次發佈（GitHub Releases）前逐項過。**機器檢查全過不等於可以發佈**，人工項一樣要勾。
 
+## 做發佈檔
+
+- 版本號只改 `src-tauri/tauri.conf.json` 的 `version`（`Cargo.toml`、`package.json` 一起改成同一個）
+- 本機：`tools\Build-Release.cmd`（Verify → 安裝程式 → 可攜版 zip → `SHA256SUMS.txt`，放在 `target\release-artifacts\<版本>\`）
+- GitHub：推 `v<版本>` 標籤 → `.github/workflows/release.yml` 做同樣的事，建一個**草稿** release；過完下面每一項才按「發佈」
+
 ## 機器檢查
 
 - [ ] `tools\Verify.ps1` 全綠（含 cargo audit、npm audit、版本下限）

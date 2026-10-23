@@ -1,0 +1,15 @@
+# 每週檢查一次相依更新。升級前照 docs/environment/versions.md「怎麼更新這一份」處理。
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

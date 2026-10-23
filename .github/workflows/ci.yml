@@ -1,0 +1,38 @@
+# 每次推送與 PR：跑跟本機一樣的 tools\Verify.ps1（全綠才算過）。
+# 第三方 action 只用 GitHub 官方的兩個，並釘在 commit SHA（註解是對應的版本）。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Rust 工具鏈（照 rust-toolchain.toml）
+        run: rustup show
+
+      - name: 安全檢查工具
+        run: cargo install --locked cargo-audit@0.22.2 cargo-deny@0.20.2
+
+      - name: 前端相依
+        run: npm ci
+
+      - name: Verify
+        shell: powershell
+        run: |
+          $env:NUCIFRAGA_NODE = (Get-Command node).Source
+          .\tools\Verify.ps1

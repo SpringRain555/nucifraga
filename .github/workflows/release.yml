@@ -1,0 +1,53 @@
+# 推送 v* 標籤時：跑 Verify、做發佈檔（tools\Build-Release.ps1），建一個**草稿** release。
+# 草稿要維護者人工過完 docs\operations\release-checklist.md 才按「發佈」——這個流程不會自己公開任何東西。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Rust 工具鏈（照 rust-toolchain.toml）
+        run: rustup show
+
+      - name: 安全檢查工具
+        run: cargo install --locked cargo-audit@0.22.2 cargo-deny@0.20.2
+
+      - name: 前端相依
+        run: npm ci
+
+      - name: 標籤要跟 tauri.conf.json 的版本一致
+        shell: powershell
+        run: |
+          $v = (Get-Content src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "標籤 $env:GITHUB_REF_NAME 跟 tauri.conf.json 的版本 $v 不一致" }
+
+      - name: Verify 與發佈檔
+        shell: powershell
+        run: |
+          $env:NUCIFRAGA_NODE = (Get-Command node).Source
+          .\tools\Build-Release.ps1 -NoPause
+
+      - name: 建草稿 release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = (Get-Content src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).version
+          $dir = "target\release-artifacts\$v"
+          $files = Get-ChildItem $dir -File | Where-Object { $_.Extension -in '.exe', '.zip', '.txt' } | ForEach-Object { $_.FullName }
+          gh release create $env:GITHUB_REF_NAME --draft --title "Nucifraga $v" --notes "見 docs/changelog.md。下載後用 SHA256SUMS.txt 核對。" @files

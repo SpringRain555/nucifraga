@@ -14,7 +14,7 @@ REQ-0001、0003～0009 的驗收條件全部勾選；50 萬檔基準在 `docs/op
 | **M0 文件與骨架** | 卡片、`docs/` 全部必備檔、ADR-0001～0009、REQ-0001～0009；workspace 編譯得過、`start_nucifraga.cmd` 開得出空視窗、`tools\Verify.ps1` 全綠 | Verify 全綠＋雙擊開得出視窗 |
 | **M1 桌機鏡像** | 模板讀寫（最小替換寫回）、預檢、掃描、比對、索引、鏡像＋舊版本、鎖定檔檢查、報告與清單；CLI；UI 的首頁、模板編輯、執行中、結果、紀錄、舊版本 | REQ-0001、0003～0009 的驗收條件全部勾選；50 萬檔基準寫進 `docs/operations/benchmarks.md` |
 | **M2 手機** | `proto/` 協定規格、配對（ADR）、Kotlin app（MediaStore／SAF／前景服務、`play`／`full` 兩個 flavor）、`nucifraga-phone` | REQ-0002 的驗收條件；模擬器上的端到端測試 |
-| **M3 收尾** | 排程（工作排程器）、還原畫面、安裝程式、GitHub Releases 發佈流程 | `docs/operations/release-checklist.md` 全部通過 |
+| **M3 收尾** | 排程（工作排程器）、還原畫面、安裝程式、GitHub Releases 發佈流程 | `docs/operations/release-checklist.md` 全部通過。**2026-10-24：功能與流程完成；清單裡只剩要使用者做的人工項（乾淨機器實測、建 repo 與推送）** |
 
 ## 接下來
 

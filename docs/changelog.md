@@ -4,6 +4,15 @@
 
 ## 未發行
 
+### 2026-10-24 —— M3：安裝程式與發佈流程
+
+- `tauri.conf.json`：NSIS 安裝程式，裝在使用者資料夾（不需要系統管理員）、繁體中文介面、WebView2 用下載器
+- `tools\Build-Release.ps1`／`.cmd`：Verify → 安裝程式 → 可攜版 zip → `SHA256SUMS.txt`（`target\release-artifacts\<版本>\`）。本機實跑過：安裝程式 3.26 MB、可攜版 6.19 MB
+- `.github/workflows/ci.yml`（推送與 PR 跑 Verify）、`release.yml`（`v*` 標籤 → 草稿 release，不自動公開）、`dependabot.yml`；
+  第三方 action 只用 GitHub 官方的 checkout 與 setup-node，釘在 commit SHA
+- README 加「安裝與更新」（未簽章的 SmartScreen 警告、可攜版、核對雜湊、不自動更新）
+- **沒有建 GitHub repo、沒有推送**（使用者 2026-10-24 決定：只準備好）
+
 ### 2026-10-24 —— M3：還原
 
 - 還原畫面（ADR-0011）：選時間點（目前版本或舊版本）→ 勾檔案或資料夾 → 新資料夾（預設桌面）或放回原位 → 檢查 → 還原
