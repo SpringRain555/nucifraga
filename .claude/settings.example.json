@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_readme": [
+    "複製成 .claude/settings.json 再把佔位符換成實際路徑。那一份不進版控 ——",
+    "它列的是本機私人資料夾的實際名稱。",
+    "",
+    "佔位符：",
+    "  <模板資料夾>   app 第一次啟動時選的模板資料夾，例如 X:/SomeFolder/nucifraga-data",
+    "",
+    "== 這個專案的形狀 ==",
+    "模板資料夾第一層是使用者的模板（*.json）。放行讀取，讓 agent 能幫忙看模板哪裡寫錯；",
+    "不放行寫入 —— 模板由 app 寫（最小替換，ADR-0006），agent 要改就照上層的 ask 問一次。",
+    "",
+    "備份碟上的資料（current/、_versions/、.nucifraga/）不在這裡：那是使用者的備份本身，",
+    "agent 不需要讀，也不該寫。"
+  ],
+  "permissions": {
+    "allow": [
+      "Read(<模板資料夾>/**)"
+    ]
+  }
+}

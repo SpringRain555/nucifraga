@@ -18,7 +18,10 @@
 > agent 檔｜§11 外部資料根｜§12 文件層級的必備清單｜§13 公開前準備｜§14 規則的上行
 > ｜§16 本機 app 的生命週期｜§17 擷取紀律｜§18 圖表｜§19 金鑰與祕密。
 >
-> **本專案的例外**：無 `data_root`（§11 不適用）—— 使用者的資料在使用者自己選的來源與備份碟上，不在專案裡。
+> **本專案的例外**：§11 只部分適用 —— `data_root` 是 app 的**模板資料夾**（見下面「資料邊界」）；
+> 使用者真正的資料在自己選的來源與備份碟上，不在專案裡，也不在資料根裡。
+> 模板資料夾的位置記在 `settings.json` 的 `profilesFolder`，不是 §11 的 `system_paths.json`／`data_root` key，
+> 所以卡片不寫 `data_pointer`；§11 的「四步」也沒有照做（第一次啟動只問資料夾一個問題，ADR-0006 補充）。
 >
 > **不要假設上游那一份會被讀到。** Claude Code 會往上層目錄串接，但 Codex 的慣例是
 > 「最近的那一份勝出」—— 失敗方向是「Codex 讀不到上游規則」，所以**這一份必須自給自足**
@@ -64,6 +67,24 @@
    寫回只能做**最小替換**（ADR-0006）：改一個值就只動那個值的位元組。不要讀成物件再整份序列化
 3. **公開 repo 的私人資訊。** 不寫任何真實路徑、使用者名稱、機器名稱。範例用 `D:\Documents`、`E:\Backup`。
    `docs\research\sources\manifest.jsonl` 的路徑要是相對的 `raw/…`
+
+## 資料邊界
+
+<!-- data-boundary -->
+
+| | 位置 |
+|---|---|
+| 程式 | 這個 repo |
+| 模板（使用者的，不公開） | `<模板資料夾>` 第一層的 `*.json`；資料夾外的「外部模板」各在各的位置 |
+| 位置怎麼決定 | app 第一次啟動時問，記在 `%APPDATA%\io.github.nucifraga\settings.json` 的 `profilesFolder`（開發版 identifier 是 `io.github.nucifraga.dev`） |
+| 備份本身 | 使用者選的備份碟（`current\`、`_versions\`、`_reports\`、`.nucifraga\`） |
+
+**`<模板資料夾>` 是佔位符** —— 實際路徑在那份 `settings.json`，以及本機那份 `.claude\settings.json`
+（**不進版控**，範本是 `.claude/settings.example.json`）。
+
+- 模板資料夾**只讀**：幫使用者看模板哪裡寫錯可以，改模板要先問（寫回只能最小替換，ADR-0006）
+- **備份碟不讀不寫**：那是使用者的備份本身。除錯要看報告，請使用者在 app 裡按「打開這次的報告」
+- 測試一律用 `%TEMP%` 的亂數資料夾，不碰真的 `settings.json`
 
 ## 安全邊界（ADR-0007）
 
