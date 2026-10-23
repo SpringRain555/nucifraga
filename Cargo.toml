@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/mirror", "crates/cli", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+
+# 版本下限的理由在 docs/environment/versions.md；這裡只寫相容範圍，實際版本由 Cargo.lock 決定。
+[workspace.dependencies]
+nucifraga-core = { path = "crates/core" }
+nucifraga-mirror = { path = "crates/mirror" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+sha2 = "0.11.1"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+walkdir = "2.5.0"
+globset = "0.4.20"
+time = { version = "0.3.55", features = ["formatting", "local-offset", "macros"] }
+tempfile = "3.27.0"
+clap = { version = "4.6.7", features = ["derive"] }
+tauri = { version = "2.12.5", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
+tauri-plugin-single-instance = "2.5.4"
+tauri-plugin-dialog = "2.8.3"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

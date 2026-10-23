@@ -1,0 +1,49 @@
+# template: .gitignore v1
+# D:\Projects 共用 .gitignore 基底。各專案在下面接自己的堆疊段落，
+# 上面這一段不要改 —— 改了要回 _meta\templates 改，版本號 +1（CONVENTIONS §14）。
+#
+# 這裡是 blocklist（各專案自己的 repo）。根目錄那一份是 allowlist，兩者刻意不同：
+# 根 repo 要預設忽略一切（新增專案不必改任何檔案），專案 repo 要預設追蹤一切。
+
+# ── agent 與本機設定 ───────────────────────────────────────
+# settings.json 會寫實際的私人路徑，絕不進版控。範本另外給 settings.example.json。
+.claude/settings.json
+.claude/settings.local.json
+.mcp.json
+
+# ── 密鑰與環境 ─────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+
+# ── 作業系統與編輯器 ───────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── 產生物與快取 ───────────────────────────────────────────
+*.log
+.cache/
+tmp/
+
+# ══ Rust／Tauri 段 ═════════════════════════════════════════
+/target/
+# Tauri 建置時產生的 schema 與 capability 展開結果
+/src-tauri/gen/
+# Cargo.lock 要進版控 —— 這是 app，lock 是環境定義的一部分（§12）
+
+# ══ Node 段 ═══════════════════════════════════════════════
+node_modules/
+.vite/
+coverage/
+/ui/dist/
+# package-lock.json 要進版控 —— 它是環境定義的一部分（§12）
+
+# ══ 調查的原始檔（重跑 docs/research/query-log.md 的批次就能重生）══
+/docs/research/sources/raw/

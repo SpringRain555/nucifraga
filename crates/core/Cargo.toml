@@ -1,0 +1,16 @@
+[package]
+name = "nucifraga-core"
+description = "模板、預檢、掃描、比對、索引、錯誤碼與報告。不依賴任何 engine 或 UI。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

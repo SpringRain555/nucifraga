@@ -1,0 +1,40 @@
+# cargo-deny 的設定。tools\Verify.ps1 的「安全公告」一步會跑 `cargo deny --locked check`。
+# 規則的理由：advisories → docs/environment/versions.md；bans → ADR-0007；sources → 只信 crates.io。
+
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+# 未維護（unmaintained）的公告來自 Tauri 的間接相依，我們無法直接換掉；只看 workspace 自己直接用到的。
+unmaintained = "workspace"
+
+[bans]
+multiple-versions = "allow"
+deny = [
+    { crate = "tauri-plugin-fs", reason = "ADR-0007：前端不碰檔案系統" },
+    { crate = "tauri-plugin-shell", reason = "ADR-0007" },
+    { crate = "tauri-plugin-http", reason = "ADR-0007" },
+    { crate = "tauri-plugin-updater", reason = "ADR-0007：不做自動更新" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

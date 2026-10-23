@@ -1,0 +1,48 @@
+{
+    "note":  "產生物。改了 .md 裡的 mermaid 或 tools/diagrams/mermaid-config.json 就重跑 tools/diagrams/Render-Diagrams.ps1。",
+    "theme":  "940f89e6cd0a4e053174ebeaec35468b5dd5efafd1d315f7302f34287fa28fe5",
+    "diagrams":  [
+                     {
+                         "document":  "app-lifecycle.md",
+                         "index":  1,
+                         "svg":  "launcher.svg",
+                         "sha256":  "508643f1c908ea12c6dfb2f741803fcbc8e07fbc43234619f55e0b79cf623505"
+                     },
+                     {
+                         "document":  "overview.md",
+                         "index":  1,
+                         "svg":  "layers.svg",
+                         "sha256":  "4fcab9810e1a5f7959a3ce0340f7020f0fbf0d430527515cfbfbae3292b31295"
+                     },
+                     {
+                         "document":  "overview.md",
+                         "index":  2,
+                         "svg":  "dataflow.svg",
+                         "sha256":  "e6a4f43fa6a3f239667d03ea61b01d028aac4ec5d0aec648a818e6d4ce1f9368"
+                     },
+                     {
+                         "document":  "state-machines.md",
+                         "index":  1,
+                         "svg":  "run-state.svg",
+                         "sha256":  "380fd448077d6d1585242cc5e4d3c9661c5b977b0142619e816a639b9e4f611e"
+                     },
+                     {
+                         "document":  "state-machines.md",
+                         "index":  2,
+                         "svg":  "file-op.svg",
+                         "sha256":  "db9be14c57783eb523d563f1908a7f346aa5a849e6228b839294eea9fa5dbef2"
+                     },
+                     {
+                         "document":  "state-machines.md",
+                         "index":  3,
+                         "svg":  "phone-link.svg",
+                         "sha256":  "40c32f31daf25f951b349861488e8e74637147d8982e40fcef58baa0311853b9"
+                     },
+                     {
+                         "document":  "ui-workflows.md",
+                         "index":  1,
+                         "svg":  "screens.svg",
+                         "sha256":  "5ce99a511973056c5e48761b21f46ba562f6d6e8df319b6c2341c73351027339"
+                     }
+                 ]
+}

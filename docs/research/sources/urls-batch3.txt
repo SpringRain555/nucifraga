@@ -1,0 +1,2 @@
+https://github.com/rustic-rs/rustic
+https://github.com/rustic-rs/rustic_core

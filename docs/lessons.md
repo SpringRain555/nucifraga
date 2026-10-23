@@ -1,0 +1,98 @@
+# 失敗紀錄
+
+**append-only。** 修好之後不要刪掉條目 —— 這份文件的價值在於「踩過什麼」，
+不是「現在有什麼問題」。已解決的就在「怎麼修的」寫清楚。
+
+每一條五個欄位。**影響範圍**是選填的，標了「全域」的條目會被
+`Update-Dashboard.ps1` 掃進 dashboard 的「待提升」區（CONVENTIONS §14 上行）。
+
+前三條是**這個專案存在以前**、手動備份時踩到的，2026-10-23 開專案時從
+`D:\_meta\decisions\0001` 與 `D:\Projects\_meta\logs\2026-09-12_工作樹誤刪_事故紀錄.md` 搬進來 ——
+它們是 nucifraga 的設計前提，不是歷史。
+
+---
+
+## 檔案總管複製時，資料夾路徑 ≥ 248 字元的整批漏掉，而且沒有任何提示
+
+**日期**：2026-10-17（量測；實際發生更早）
+**症狀**：逐檔對照 10/16 與 10/17 兩份快照，`D:\Projects` 的 10/17 快照少了 12 個檔案。
+這 12 個檔所在的資料夾，在備份端第一個建不起來的那一層是 248 與 252 字元；建得起來的最深一層是 243 字元。
+反過來，檔案路徑 267、282 字元的檔案**都有備到**。
+**原因**：卡住的是 Win32 建資料夾的上限（MAX_PATH − 12 ＝ 248），不是檔案的 260。
+備份端的路徑比來源長了一段前綴（當時是 52 字元），所以來源看起來安全的路徑，到了備份端就超過。
+**怎麼修的**：當時用 `D:\_meta\scripts\Test-BackupPaths.ps1` 在複製前檢查。nucifraga 的做法：
+寫檔一律用 `\\?\` 長路徑，所以**不會漏**；預檢仍然計算路徑預算並報 `PATH-001`／`PATH-002`，
+因為之後如果用檔案總管把檔案拖回來，那個限制又回來了（`docs/architecture/storage-layout.md`）。
+**影響範圍**：本專案
+
+## exFAT 備份碟上，每份全量快照都完整佔一份空間，小檔案還放大好幾倍
+
+**日期**：2026-10-17（量測）
+**症狀**：E: 是 exFAT、配置單位 256 KB。`D:\Projects` 有 177,673 個檔案（56%）在可重生的目錄裡，
+實際大小 19.7 GiB，在 E: 上卻要佔 60.8 GiB。每次全量快照都再佔一次。
+**原因**：配置單位大，每個小檔案至少佔 256 KB；exFAT 沒有硬連結，沒辦法讓沒變的檔案在快照之間共用。
+**怎麼修的**：排除可重生目錄（`excludeDirNames`，沿用 `backup-policy.json`）；
+版面改成單一鏡像＋舊版本資料夾，只寫有變的檔案（ADR-0004）。
+**影響範圍**：本專案
+
+## 遞迴刪除的路徑由變數拼出，變數變空之後刪掉了整個 D:\Projects 的工作樹
+
+**日期**：2026-09-12
+**症狀**：一支一次性測試腳本在 `finally` 裡跑 `[System.IO.Directory]::Delete($dir, $true)`，
+結果 `D:\Projects` 底下 33 個專案的工作樹全部消失，只剩 `.git\objects`。
+**原因**：腳本沒有 BOM，PS 5.1 把中文註解當 Big5 讀、吞掉換行，`$slug = '...'` 變成註解的一部分，
+`$dir = "D:\Projects\$slug"` 展開成 `D:\Projects\`。`Test-Path $dir` 對根目錄也是 true，擋不住。
+D: 是開了 TRIM 的 SSD，沒進版控的內容永久消失。
+**怎麼修的**：當時的處置見事故紀錄。**對 nucifraga 的約束**：
+
+- 程式裡所有刪除只有一個入口 `core::safe_delete`，它斷言：路徑在目的地根之下、目的地根有標記檔、
+  目標名稱符合預期格式（`docs/architecture/storage-layout.md`「誰可以刪什麼」）。三條有一條不成立就拒絕（`ENG-010`）
+- 會碰到使用者檔案的「刪除」實際上都是**搬移**到 `_versions`；真正的刪除只發生在使用者明確按下「永久刪除」時
+- 測試的暫存資料夾一律在 `%TEMP%` 底下、名稱含亂數，清理前斷言名稱
+- `tools\*.ps1` 一律 UTF-8 有 BOM
+
+**影響範圍**：本專案（規則本身早已寫進使用者的全域 `CLAUDE.md`，不需要再提升）
+
+## vue-tsc 3.3 配 TypeScript 7 直接當掉，而 peer 範圍宣稱支援
+
+**日期**：2026-10-23
+**症狀**：`npm run build:ui` 失敗：
+`Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './lib/tsc' is not defined by "exports" in ...\node_modules\typescript\package.json`
+**原因**：TypeScript 7 是原生（Go）重寫版，不再提供 `lib/tsc`；vue-tsc 3.3.13 還在找它。
+vue-tsc 的 peerDependencies 寫的是 `typescript >=5.0.0`，所以 npm 不會警告 —— **peer 範圍不等於實際相容**。
+`D:\Projects\_meta\dashboard-web` 同樣是 TS 7 ＋ vue-tsc 3.3，沒有踩到，是因為它的 build 腳本只跑 `vite build`，從來沒有呼叫 vue-tsc。
+**怎麼修的**：`npm install --save-dev typescript@~6.0.3`（最後一個 JS 實作的大版本），`package.json` 用 `~6.0.3` 釘住小版本。
+等 vue-tsc 宣告支援 TS 7 再升。
+**影響範圍**：全域（任何用 vue-tsc 的專案都會撞到；dashboard-web 目前是「沒跑型別檢查」而不是「沒問題」）
+
+## PS 5.1 的 Start-Process -PassThru：行程結束太快時 ExitCode 是 $null
+
+**日期**：2026-10-23
+**症狀**：第二次雙擊啟動（應該交棒給已開的視窗、以 0 結束）被啟動器報成「程式啟動失敗（離開碼 ）」—— 離開碼是空的。
+**原因**：`Start-Process -PassThru` 回傳的 `Process` 物件在沒有人取過 `Handle` 的情況下，行程一結束就拿不到離開碼。
+交棒的那個行程只活幾十毫秒。
+**怎麼修的**：`tools\Launch.ps1` 在 `Start-Process` 之後立刻 `$null = $proc.Handle`。重測：交棒路徑回 0，實例數維持 1。
+**影響範圍**：全域（照 `_meta\templates\tools\Launch.ps1` 長出來的啟動器都用 `Start-Process -PassThru`）
+
+## PS 5.1 的 ConvertFrom-Json 讀不了 package-lock.json（而我先猜錯了原因）
+
+**日期**：2026-10-23
+**症狀**：Verify 的「版本下限」一步報：
+`Cannot process argument because the value of argument "name" is not valid.`
+**原因**：`package-lock.json` 的 `packages` 底下，根套件的 key 是空字串 `""`；PS 5.1 的 `ConvertFrom-Json` 不接受空字串屬性名，整份拒絕。
+**我第一次猜的是錯的**：以為是字串裡 `"$name："` 的全形冒號被當成 `$scope:`，改了、在註解裡寫成事實，結果照紅。
+把那一段單獨跑、印出出錯的行號，才看到是 `ConvertFrom-Json` 那一行；之後再實測 `"$name：ok"` 完全正常，那句註解刪掉。
+**怎麼修的**：`tools\Verify.ps1` 改成對 lock 檔原文用正則抓 `"node_modules/<名稱>": { "version": "…" }`。
+**教訓**：沒有重現就不寫成註解；先把出錯的那一段單獨跑。
+**影響範圍**：本專案
+
+## cargo audit 不分平台：Tauri 的 Linux 相依讓 Windows 專案的 audit 一直紅
+
+**日期**：2026-10-23
+**症狀**：`cargo audit --deny warnings` 報 5 個 warning（`glib` unsound、`zbus_names`／`zvariant` 等 unmaintained），全部來自 Tauri 在 Linux 上的 GTK／D-Bus 相依。
+**原因**：`Cargo.lock` 收錄所有平台的相依，cargo audit 掃的是整份 lock。它有 `--target-os`／`--target-arch`，
+但那只篩「公告本身標了平台」的那幾則，**不會依相依圖排除只在 Linux 才用到的 crate** ——
+實測 `cargo audit --deny warnings --target-os windows --target-arch x86_64` 照樣是同樣 5 則。這些 crate 不會編進 Windows 的 exe。
+**怎麼修的**：分工 —— `cargo audit`（不加 `--deny warnings`）只擋真正的漏洞；未維護與 unsound 交給 `cargo deny`，
+它依 `deny.toml` 的 `[graph] targets = ["x86_64-pc-windows-msvc"]` 只看 Windows 的相依圖。
+**影響範圍**：本專案（日後若要支援 Linux，`deny.toml` 的 targets 要加上去，那時這些警告就是真的）

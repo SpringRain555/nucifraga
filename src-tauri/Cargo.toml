@@ -1,0 +1,23 @@
+[package]
+name = "nucifraga-app"
+description = "Tauri 殼：單一實例、視窗、把 core 的事件轉給 UI。不寫任何 core 沒有的邏輯。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nucifraga-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+nucifraga-core.workspace = true
+serde.workspace = true
+tauri.workspace = true
+tauri-plugin-single-instance.workspace = true
+
+[lints]
+workspace = true

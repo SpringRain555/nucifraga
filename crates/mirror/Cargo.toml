@@ -1,0 +1,13 @@
+[package]
+name = "nucifraga-mirror"
+description = "鏡像＋舊版本的 engine：暫存檔寫入、讀回驗證、改名、搬到 _versions。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nucifraga-core.workspace = true
+
+[lints]
+workspace = true

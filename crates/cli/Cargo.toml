@@ -1,0 +1,18 @@
+[package]
+name = "nucifraga-cli"
+description = "不開視窗執行一份模板；給工作排程器與端到端測試用。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nucifraga-cli"
+path = "src/main.rs"
+
+[dependencies]
+nucifraga-core.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

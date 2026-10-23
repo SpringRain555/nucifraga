@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "destination": {
+    "root": "E:\\Backup",
+    "snapshot": "{yyyyMMdd}_backup"
+  },
+  "roots": [
+    { "path": "D:\\Documents", "pathCheck": true },
+    { "path": "D:\\Projects", "pathCheck": true },
+    { "path": "F:\\Documents", "name": "Documents-F" }
+  ],
+  "limits": { "dirPath": 247, "filePath": 259 },
+  "excludeDirNames": ["node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", "target"],
+  "nucifraga": {
+    "title": "主機每週備份",
+    "format": "mirror",
+    "excludeGlobs": ["**/*.tmp", "**/~$*"],
+    "followReparsePoints": false,
+    "skipCloudPlaceholders": true,
+    "pathPolicy": "warn",
+    "verifyAfterCopy": true,
+    "versioning": { "retentionDays": null },
+    "deleteGuard": { "minCount": 50, "maxRatio": 0.05 },
+    "alwaysSkipLocked": ["**/*.ost", "**/pagefile.sys"],
+    "destinationId": null
+  }
+}

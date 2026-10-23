@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "destination": { "root": "E:\\Backup" },
+  "roots": [
+    { "path": "D:\\Documents" },
+    { "path": "D:\\Pictures" }
+  ]
+}
