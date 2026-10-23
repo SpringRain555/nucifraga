@@ -125,6 +125,7 @@ export const zhTW = {
   "run.progress.files": "{done} / {total} 個檔案",
   "run.progress.bytes": "{done} / {total}",
   "run.progress.scanned": "已掃描 {count} 個檔案",
+  "run.progress.checked": "已檢查 {done} / {total} 個檔案",
   "run.cancel": "取消這次備份",
   "run.cancelPending": "做完目前這個檔案就停……",
   "run.mass.title": "這次會把異常多的檔案移到舊版本",

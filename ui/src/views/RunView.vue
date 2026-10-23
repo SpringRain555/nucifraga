@@ -135,6 +135,12 @@ const stampOfReport = computed(() => finished.value?.report.runId);
       <p v-else-if="progress && state === 'scanning'" class="muted">
         {{ t("run.progress.scanned", { count: formatNumber(progress.filesDone) }) }}
       </p>
+      <div v-else-if="progress && state === 'checkingLocks'" class="progress">
+        <progress :max="Math.max(progress.filesTotal, 1)" :value="progress.filesDone"></progress>
+        <p class="muted">
+          {{ t("run.progress.checked", { done: formatNumber(progress.filesDone), total: formatNumber(progress.filesTotal) }) }}
+        </p>
+      </div>
 
       <!-- 需確認（state-machines.md §1） -->
       <div v-if="confirmation?.kind === 'massVersioning'" class="ask" role="alertdialog">

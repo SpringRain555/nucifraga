@@ -612,7 +612,7 @@ impl<'a> Runner<'a> {
     /// 回傳要略過的計畫索引；`None` ＝ 取消。
     fn check_locks(&mut self, r: &Ready, plan: &Plan) -> Option<HashSet<usize>> {
         let mut skip = HashSet::new();
-        let candidates: Vec<_> = plan
+        let mut candidates: Vec<locks::Candidate> = plan
             .jobs
             .iter()
             .enumerate()
@@ -628,7 +628,21 @@ impl<'a> Runner<'a> {
             })
             .collect();
         loop {
-            let groups = locks::probe(&candidates);
+            let cancel = self.cancel.clone();
+            let probed = locks::probe(&candidates, &cancel, &mut |done, total| {
+                let p = Progress {
+                    files_done: done as u64,
+                    files_total: total as u64,
+                    bytes_done: 0,
+                    bytes_total: 0,
+                    current: None,
+                };
+                self.progress(p, done == total);
+            });
+            let Some(groups) = probed else {
+                self.cancelled = true;
+                return None;
+            };
             if groups.is_empty() {
                 break;
             }
@@ -665,6 +679,13 @@ impl<'a> Runner<'a> {
             (self.sink)(Event::Locked(regrouped.clone()));
             match self.decider.locked(&regrouped) {
                 LockDecision::Retry => {
+                    // 只重試這次打不開的。其他檔案之後才被鎖住的，傳輸時報 SRC-LOCKED（ADR-0009）。
+                    let again: HashSet<usize> = regrouped
+                        .iter()
+                        .flat_map(|g| g.files.iter().map(|f| f.job))
+                        .chain(auto.iter().map(|(_, f)| f.job))
+                        .collect();
+                    candidates.retain(|c| again.contains(&c.0));
                     self.set(RunState::CheckingLocks);
                     skip.clear();
                     continue;
