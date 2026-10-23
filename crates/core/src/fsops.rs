@@ -222,6 +222,24 @@ pub fn unique_stamp(dest: &Path, base: &str) -> String {
         .expect("一定找得到")
 }
 
+/// 這顆備份碟上現在有沒有一次備份在跑（任何行程：app、CLI、排程）。
+/// 看的是執行鎖 `.nucifraga\run.lock`：備份期間它被獨佔鎖住，行程一死作業系統就放開。
+/// 只開既有的檔案，不建任何東西。
+pub fn run_in_progress(dest: &Path) -> bool {
+    let p = longpath::extended(&dest.join(MARKER_DIR).join("run.lock"));
+    let Ok(f) = fs::File::open(&p) else {
+        return false;
+    };
+    match f.try_lock_shared() {
+        Ok(()) => {
+            let _ = f.unlock();
+            false
+        }
+        Err(fs::TryLockError::WouldBlock) => true,
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

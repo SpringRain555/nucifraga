@@ -67,6 +67,7 @@
 {
   "schemaVersion": 1,
   "profilesFolder": "C:\\Users\\me\\Documents\\Nucifraga",
+  "backgroundMode": true,
   "profiles": [
     { "path": "D:\\_meta\\backup-policy.json", "addedAt": "2026-10-23T10:00:00+08:00" }
   ],
@@ -79,7 +80,9 @@ app 只記「模板在哪」，不複製模板內容。
 - `profilesFolder`：模板資料夾。沒有這個欄位＝第一次使用。資料夾裡第一層的 `*.json` 就是清單，**不另記**
 - `profiles`：外部模板（資料夾外的模板檔）的路徑。被搬走時，首頁顯示「找不到模板檔」並提供「重新指定」
 
-`schemaVersion` 沒有因為多了 `profilesFolder` 而升版：舊檔讀進來就是「還沒選資料夾」，會先問一次，外部模板照舊。
+- `backgroundMode`：設定頁的「背景模式」。沒有這個欄位＝開
+
+`schemaVersion` 沒有因為多了 `profilesFolder`、`backgroundMode` 而升版：舊檔讀進來就是「還沒選資料夾」，會先問一次，外部模板照舊。
 
 ## 3. 目的地標記 `destination.json`
 

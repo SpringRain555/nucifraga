@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, asIssue, type Home, type Issue } from "../api";
 import { t } from "../i18n/zh-TW";
-import { formatDate } from "../format";
+import { formatDate, formatNumber, formatRemaining } from "../format";
+import { run, isActive, isWaiting, stepOf } from "../run";
 import OutcomeBadge from "../components/OutcomeBadge.vue";
 import IssueList from "../components/IssueList.vue";
 
@@ -14,6 +15,7 @@ const emit = defineEmits<{
   history: [path: string, title: string];
   versions: [path: string, title: string];
   settings: [];
+  view: [path: string, title: string];
   folder: [current: string | null, suggested: string, inFolder: number];
 }>();
 
@@ -59,6 +61,11 @@ async function openFolder() {
 }
 
 onMounted(refresh);
+// 在首頁等的時候備份結束了：卡片上的「上次備份」要跟著更新。
+watch(
+  () => run.finished,
+  () => void refresh(),
+);
 defineExpose({ refresh });
 </script>
 
@@ -67,6 +74,44 @@ defineExpose({ refresh });
     <p v-if="home?.settingsWasBroken" class="notice">{{ t("app.settingsBroken") }}</p>
     <IssueList v-if="error" :issues="[error]" />
     <IssueList v-if="home?.folderIssue" :issues="[home.folderIssue]" />
+
+    <!-- 進行中：離開執行中畫面之後，備份在背景繼續跑；從這裡回去（ui-workflows「進行中」） -->
+    <section v-if="isActive()" class="panel active" :class="{ 'active--waiting': isWaiting() }">
+      <h2>{{ t("home.active.title") }}</h2>
+      <div class="active__body">
+        <div>
+          <p v-if="isWaiting()" class="warn">⚠ {{ t("home.active.waiting", { title: run.title }) }}</p>
+          <p v-else>
+            {{ t("home.active.running", { title: run.title, step: stepOf(run.state) ? t(stepOf(run.state)!) : "" }) }}
+          </p>
+          <p v-if="run.progress && run.state === 'transferring'" class="muted">
+            {{
+              t("run.progress.files", {
+                done: formatNumber(run.progress.filesDone),
+                total: formatNumber(run.progress.filesTotal),
+              })
+            }}
+            · {{ formatRemaining(run.eta) }}
+          </p>
+          <p v-else-if="run.progress && run.state === 'checkingLocks'" class="muted">
+            {{
+              t("run.progress.checked", {
+                done: formatNumber(run.progress.filesDone),
+                total: formatNumber(run.progress.filesTotal),
+              })
+            }}
+          </p>
+          <progress
+            v-if="run.progress && (run.state === 'transferring' || run.state === 'checkingLocks')"
+            :max="Math.max(run.state === 'transferring' ? run.progress.bytesTotal : run.progress.filesTotal, 1)"
+            :value="run.state === 'transferring' ? run.progress.bytesDone : run.progress.filesDone"
+          ></progress>
+        </div>
+        <button type="button" class="primary" @click="emit('view', run.path!, run.title)">
+          {{ t("home.active.view") }}
+        </button>
+      </div>
+    </section>
 
     <div v-if="home && home.profiles.length === 0" class="panel empty">
       <h2>{{ t("home.empty.title") }}</h2>
@@ -81,12 +126,18 @@ defineExpose({ refresh });
             <span v-if="c.external" class="tag">{{ t("home.card.external") }}</span>
           </h2>
           <template v-if="!c.error">
-            <span :class="c.destinationConnected ? 'ok' : 'warn'" class="status">
+            <span v-if="c.busy" class="status busy">● {{ t("home.card.busy") }}</span>
+            <span v-else :class="c.destinationConnected ? 'ok' : 'warn'" class="status">
               {{ c.destinationConnected ? "●" : "○" }}
               {{ c.destinationConnected ? t("home.card.connected") : t("home.card.notConnected") }}
             </span>
-            <button type="button" class="primary" :disabled="home.running" @click="emit('start', c.path, c.title)">
-              {{ t("home.card.start") }}
+            <button
+              type="button"
+              class="primary"
+              :disabled="home.running || isActive() || c.busy"
+              @click="emit('start', c.path, c.title)"
+            >
+              {{ c.interrupted || c.last?.outcome === "cancelled" ? t("home.card.resume") : t("home.card.start") }}
             </button>
           </template>
         </header>
@@ -105,6 +156,10 @@ defineExpose({ refresh });
         </template>
 
         <template v-else>
+          <p v-if="c.busy && run.path !== c.path" class="notice inline">{{ t("home.card.busyElsewhere") }}</p>
+          <p v-else-if="!c.busy && (c.interrupted || c.last?.outcome === 'cancelled')" class="notice inline">
+            {{ t("home.card.interrupted") }}
+          </p>
           <dl class="facts">
             <dt>{{ t("home.card.sources") }}</dt>
             <dd>
@@ -184,6 +239,42 @@ defineExpose({ refresh });
 .status {
   font-size: 0.9rem;
   white-space: nowrap;
+}
+.busy {
+  color: var(--accent);
+}
+.inline {
+  margin: 0 20px;
+}
+.active {
+  margin-bottom: 14px;
+  border: 2px solid var(--accent);
+}
+.active--waiting {
+  border-color: var(--warn);
+}
+.active h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: var(--muted);
+}
+.active__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+.active__body > div {
+  flex: 1;
+  min-width: 240px;
+}
+.active p {
+  margin: 0 0 4px;
+}
+.active progress {
+  width: 100%;
+  height: 10px;
 }
 .facts {
   display: grid;

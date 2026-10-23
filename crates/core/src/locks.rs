@@ -49,8 +49,8 @@ fn is_locked(path: &std::path::Path) -> bool {
 /// 一個候選檔案：`(計畫裡的索引, 來源名, 相對路徑, 來源上的完整路徑)`。
 pub type Candidate = (usize, String, String, PathBuf);
 
-/// 同時試開幾個檔案。試開本身幾乎不花 CPU，時間都在等防毒軟體掃描（每開一個檔案掃一次），
-/// 所以並行數可以比核心數多；再多就只是在 Defender 那一端排隊（docs/operations/benchmarks.md）。
+/// 同時試開幾個檔案。試開本身幾乎不花 CPU，時間都在等防毒軟體掃描（每開一個檔案掃一次）。
+/// 1／4／8／16／32 量過：16 之後就平了（docs/operations/benchmarks.md「並行數掃描」）。
 const WORKERS: usize = 16;
 
 /// 試開每一個候選檔案；回傳打不開的那些，依佔用程式分組。`None` ＝ 中途取消。
@@ -60,17 +60,20 @@ const WORKERS: usize = 16;
 /// `on_progress(已檢查, 總數)` 在呼叫端的執行緒上呼叫，大約每 100 毫秒一次。
 ///
 /// 查佔用者最多查 `MAX_LOOKUPS` 個檔案 —— 超過的歸到「不明的程式」，避免數千個鎖住的檔案讓預檢卡很久。
+/// `background`：每個 worker 都進入 Windows 背景模式（RunOptions::background）。
 pub fn probe(
     candidates: &[Candidate],
+    background: bool,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(usize, usize),
 ) -> Option<Vec<LockGroup>> {
-    probe_with(candidates, WORKERS, cancel, on_progress)
+    probe_with(candidates, WORKERS, background, cancel, on_progress)
 }
 
 fn probe_with(
     candidates: &[Candidate],
     workers: usize,
+    background: bool,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(usize, usize),
 ) -> Option<Vec<LockGroup>> {
@@ -87,6 +90,9 @@ fn probe_with(
         let handles: Vec<_> = (0..workers)
             .map(|_| {
                 s.spawn(|| {
+                    if background {
+                        sys::enter_background_mode();
+                    }
                     loop {
                         if cancel.load(Ordering::Relaxed) {
                             return;
@@ -163,7 +169,7 @@ mod tests {
             (0, "R".to_string(), "held.pst".to_string(), held.clone()),
             (1, "R".to_string(), "free.txt".to_string(), free),
         ];
-        let groups = probe(&c, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let groups = probe(&c, false, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].files.len(), 1);
         assert_eq!(groups[0].files[0].rel, "held.pst");
@@ -194,7 +200,10 @@ mod tests {
             .open(held)
             .unwrap();
         let mut last = (0, 0);
-        let groups = probe(&c, &AtomicBool::new(false), &mut |a, b| last = (a, b)).unwrap();
+        let groups = probe(&c, false, &AtomicBool::new(false), &mut |a, b| {
+            last = (a, b)
+        })
+        .unwrap();
         assert_eq!(last, (300, 300));
         let files: Vec<_> = groups.iter().flat_map(|g| &g.files).collect();
         assert_eq!(files.len(), 1);
@@ -205,37 +214,54 @@ mod tests {
     fn cancelled_before_start_returns_none() {
         let d = tempfile::tempdir().unwrap();
         let c = many(d.path(), 50);
-        assert!(probe(&c, &AtomicBool::new(true), &mut |_, _| {}).is_none());
+        assert!(probe(&c, false, &AtomicBool::new(true), &mut |_, _| {}).is_none());
     }
 
-    /// 量並行數的效果（手動跑）：`NUCIFRAGA_PROBE_DIR=<一個很久沒碰過的大資料夾>`。
-    /// 前後兩半各用 1 與 16 個執行緒，避免第二次量到的是防毒軟體快取過的結果。
+    /// 量並行數的效果（手動跑）：`NUCIFRAGA_PROBE_DIR=<一個很久沒碰過的大資料夾>`，
+    /// `NUCIFRAGA_PROBE_FILES`（預設 40000）。檔案依序輪流分到每一組（i % 組數），
+    /// 每組拿到的檔案種類組成相近、而且彼此不重複 —— 同一個檔案量第二次會量到防毒軟體的快取。
     #[test]
     #[ignore]
     fn probe_speed() {
+        const WORKER_SETS: [usize; 5] = [1, 4, 8, 16, 32];
         let Ok(dir) = std::env::var("NUCIFRAGA_PROBE_DIR") else {
             return;
         };
+        let limit: usize = std::env::var("NUCIFRAGA_PROBE_FILES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(40_000);
         let mut stack = vec![PathBuf::from(dir)];
-        let mut files: Vec<Candidate> = Vec::new();
+        let mut files: Vec<PathBuf> = Vec::new();
         while let Some(d) = stack.pop() {
             for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
                 match e.file_type() {
                     Ok(t) if t.is_dir() => stack.push(e.path()),
-                    Ok(t) if t.is_file() && files.len() < 20_000 => {
-                        files.push((files.len(), String::new(), String::new(), e.path()))
-                    }
+                    Ok(t) if t.is_file() && files.len() < limit => files.push(e.path()),
                     _ => {}
                 }
             }
         }
-        let (a, b) = files.split_at(files.len() / 2);
-        for (label, part, workers) in [("1 執行緒", a, 1), ("16 執行緒", b, 16)] {
+        let n = WORKER_SETS.len();
+        for (k, workers) in WORKER_SETS.iter().enumerate() {
+            let part: Vec<Candidate> = files
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| i % n == k)
+                .map(|(i, p)| (i, String::new(), String::new(), p.clone()))
+                .collect();
             let t = std::time::Instant::now();
-            probe_with(part, workers, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+            probe_with(
+                &part,
+                *workers,
+                false,
+                &AtomicBool::new(false),
+                &mut |_, _| {},
+            )
+            .unwrap();
             let s = t.elapsed().as_secs_f64();
             println!(
-                "{label}：{} 個檔案 {s:.2} 秒（每秒 {:.0} 個）",
+                "{workers:>2} 執行緒：{} 個檔案 {s:.2} 秒（每秒 {:.0} 個）",
                 part.len(),
                 part.len() as f64 / s
             );

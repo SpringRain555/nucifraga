@@ -33,6 +33,7 @@ fn run(profile: &std::path::Path) -> (Report, f64) {
         Arc::new(AtomicBool::new(false)),
         RunOptions {
             fallback_report_dir: None,
+            background: false,
         },
     )
     .run(profile);

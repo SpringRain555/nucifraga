@@ -105,6 +105,7 @@ fn main() {
             commands::open_app_folder,
             commands::set_unsaved,
             commands::quit_app,
+            commands::set_background_mode,
             commands::get_profile,
             commands::save_profile,
             commands::reset_destination,

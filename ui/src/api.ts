@@ -46,6 +46,10 @@ export interface ProfileCard {
   destination?: string;
   roots: string[];
   destinationConnected: boolean;
+  /** 這顆備份碟上現在有一次備份在跑（這個 app 或別的程式）。 */
+  busy: boolean;
+  /** 上一次沒有正常結束、還沒被下一次收尾。 */
+  interrupted: boolean;
   /** 模板資料夾外的模板（只記路徑）。 */
   external: boolean;
   error?: Issue;
@@ -140,6 +144,7 @@ export interface Diagnostics {
   identifier: string;
   settingsFile: string;
   fallbackReports: string;
+  backgroundMode: boolean;
 }
 
 export type LockAnswer = "retry" | "skip" | "skipAndRemember" | "cancel";
@@ -158,6 +163,7 @@ export const api = {
   openAppFolder: (which: "settings" | "reports") => invoke<void>("open_app_folder", { which }),
   setUnsaved: (unsaved: boolean) => invoke<void>("set_unsaved", { unsaved }),
   quitApp: () => invoke<void>("quit_app"),
+  setBackgroundMode: (on: boolean) => invoke<void>("set_background_mode", { on }),
   forgetProfile: (path: string) => invoke<void>("forget_profile", { path }),
   getProfile: (path: string) => invoke<ProfileForm>("get_profile", { path }),
   saveProfile: (path: string, form: ProfileForm) => invoke<void>("save_profile", { path, form }),

@@ -1,105 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-import {
-  api,
-  asIssue,
-  type Confirmation,
-  type Finished,
-  type Issue,
-  type LockAnswer,
-  type LockGroup,
-  type Progress,
-  type RunState,
-} from "../api";
-import { t, type MessageKey } from "../i18n/zh-TW";
-import { formatBytes, formatDuration, formatNumber, formatPercent } from "../format";
+import { computed, onMounted, ref } from "vue";
+import { api, type LockAnswer } from "../api";
+import { t } from "../i18n/zh-TW";
+import { formatBytes, formatDuration, formatNumber, formatPercent, formatRemaining } from "../format";
+import { run, startRun, cancelRun, STEPS as steps } from "../run";
 import IssueList from "../components/IssueList.vue";
 import OutcomeBadge from "../components/OutcomeBadge.vue";
 
-const props = defineProps<{ path: string; title: string }>();
+// `attach`：回到一次已經在跑的備份（首頁「進行中」的「查看」），不另外開始一次。
+const props = defineProps<{ path: string; title: string; attach: boolean }>();
 const emit = defineEmits<{ done: [] }>();
 
-const state = ref<RunState>("idle");
-const progress = ref<Progress | null>(null);
-const confirmation = ref<Confirmation | null>(null);
-const locked = ref<LockGroup[] | null>(null);
 const remember = ref(false);
-const finished = ref<Finished | null>(null);
-const cancelling = ref(false);
-const startError = ref<Issue | null>(null);
 const openLock = ref<string | null>(null);
 
-const steps: { states: RunState[]; label: MessageKey }[] = [
-  { states: ["preflight", "awaitingConfirmation"], label: "run.step.preflight" },
-  { states: ["scanning"], label: "run.step.scanning" },
-  { states: ["planning"], label: "run.step.planning" },
-  { states: ["checkingLocks", "awaitingLockDecision"], label: "run.step.checkingLocks" },
-  { states: ["transferring"], label: "run.step.transferring" },
-  { states: ["finalizing"], label: "run.step.finalizing" },
-];
-const stepIndex = computed(() => steps.findIndex((s) => s.states.includes(state.value)));
-
-const unlisten: UnlistenFn[] = [];
+const stepIndex = computed(() => steps.findIndex((s) => s.states.includes(run.state)));
 
 onMounted(async () => {
-  unlisten.push(
-    await api.onRunEvent((e) => {
-      switch (e.kind) {
-        case "state":
-          state.value = e.data;
-          if (e.data !== "awaitingConfirmation") confirmation.value = null;
-          if (e.data !== "awaitingLockDecision") locked.value = null;
-          break;
-        case "progress":
-          progress.value = e.data;
-          break;
-        case "confirmation":
-          confirmation.value = e.data;
-          break;
-        case "locked":
-          locked.value = e.data;
-          remember.value = false;
-          break;
-        case "issue":
-          break; // 結果畫面一次列出全部，不在進行中逐則跳出
-      }
-    }),
-  );
-  unlisten.push(await api.onRunFinished((f) => (finished.value = f)));
-  await start();
+  if (!props.attach) await startRun(props.path, props.title);
 });
 
-async function start() {
-  state.value = "idle";
-  progress.value = null;
-  finished.value = null;
-  cancelling.value = false;
-  startError.value = null;
-  try {
-    await api.startRun(props.path);
-  } catch (e) {
-    startError.value = asIssue(e);
-  }
-}
-onUnmounted(() => unlisten.forEach((u) => u()));
-
 async function confirm(yes: boolean) {
-  confirmation.value = null;
+  run.confirmation = null;
   await api.answerConfirmation(yes);
 }
 
 async function answerLocks(a: LockAnswer) {
-  locked.value = null;
+  run.locked = null;
   await api.answerLocks(a === "skip" && remember.value ? "skipAndRemember" : a);
+  remember.value = false;
 }
 
-async function cancel() {
-  cancelling.value = true;
-  await api.cancelRun(false);
-}
-
-const report = computed(() => finished.value?.report ?? null);
+const report = computed(() => run.finished?.report ?? null);
 const attention = computed(() => report.value?.issues.filter((i) => i.level !== "info").length ?? 0);
 const headline = computed(() => {
   const r = report.value;
@@ -107,13 +39,13 @@ const headline = computed(() => {
   if (r.outcome === "completedWithWarnings") return t("result.completedWithWarnings", { count: attention.value });
   return t(`result.${r.outcome}`);
 });
-const stampOfReport = computed(() => finished.value?.report.runId);
+const stampOfReport = computed(() => run.finished?.report.runId);
 </script>
 
 <template>
   <section class="panel run">
     <h2>{{ report ? title : t("run.title", { title }) }}</h2>
-    <IssueList v-if="startError" :issues="[startError]" />
+    <IssueList v-if="run.startError" :issues="[run.startError]" />
 
     <template v-if="!report">
       <ol class="steps">
@@ -123,30 +55,49 @@ const stampOfReport = computed(() => finished.value?.report.runId);
         </li>
       </ol>
 
-      <div v-if="progress && state === 'transferring'" class="progress">
-        <progress :max="Math.max(progress.bytesTotal, 1)" :value="progress.bytesDone"></progress>
+      <div v-if="run.progress && run.state === 'transferring'" class="progress">
+        <progress :max="Math.max(run.progress.bytesTotal, 1)" :value="run.progress.bytesDone"></progress>
         <p>
-          {{ t("run.progress.files", { done: formatNumber(progress.filesDone), total: formatNumber(progress.filesTotal) }) }}
+          {{
+            t("run.progress.files", {
+              done: formatNumber(run.progress.filesDone),
+              total: formatNumber(run.progress.filesTotal),
+            })
+          }}
           ·
-          {{ t("run.progress.bytes", { done: formatBytes(progress.bytesDone), total: formatBytes(progress.bytesTotal) }) }}
+          {{
+            t("run.progress.bytes", {
+              done: formatBytes(run.progress.bytesDone),
+              total: formatBytes(run.progress.bytesTotal),
+            })
+          }}
+          ·
+          <strong>{{ formatRemaining(run.eta) }}</strong>
         </p>
-        <p v-if="progress.current" class="muted current" :title="progress.current">{{ progress.current }}</p>
+        <p v-if="run.progress.current" class="muted current" :title="run.progress.current">
+          {{ run.progress.current }}
+        </p>
       </div>
-      <p v-else-if="progress && state === 'scanning'" class="muted">
-        {{ t("run.progress.scanned", { count: formatNumber(progress.filesDone) }) }}
+      <p v-else-if="run.progress && run.state === 'scanning'" class="muted">
+        {{ t("run.progress.scanned", { count: formatNumber(run.progress.filesDone) }) }}
       </p>
-      <div v-else-if="progress && state === 'checkingLocks'" class="progress">
-        <progress :max="Math.max(progress.filesTotal, 1)" :value="progress.filesDone"></progress>
+      <div v-else-if="run.progress && run.state === 'checkingLocks'" class="progress">
+        <progress :max="Math.max(run.progress.filesTotal, 1)" :value="run.progress.filesDone"></progress>
         <p class="muted">
-          {{ t("run.progress.checked", { done: formatNumber(progress.filesDone), total: formatNumber(progress.filesTotal) }) }}
+          {{
+            t("run.progress.checked", {
+              done: formatNumber(run.progress.filesDone),
+              total: formatNumber(run.progress.filesTotal),
+            })
+          }}
         </p>
       </div>
 
       <!-- 需確認（state-machines.md §1） -->
-      <div v-if="confirmation?.kind === 'massVersioning'" class="ask" role="alertdialog">
+      <div v-if="run.confirmation?.kind === 'massVersioning'" class="ask" role="alertdialog">
         <h3>⚠ {{ t("run.mass.title") }}</h3>
         <ul>
-          <li v-for="m in confirmation.items" :key="m.root">
+          <li v-for="m in run.confirmation.items" :key="m.root">
             {{ t("run.mass.item", { root: m.root, count: formatNumber(m.count), ratio: formatPercent(m.ratio) }) }}
             <ul class="sample">
               <li v-for="s in m.sample" :key="s">{{ s }}</li>
@@ -159,9 +110,9 @@ const stampOfReport = computed(() => finished.value?.report.runId);
           <button type="button" class="primary" @click="confirm(true)">{{ t("run.mass.confirm") }}</button>
         </div>
       </div>
-      <div v-if="confirmation?.kind === 'adoptDestination'" class="ask" role="alertdialog">
+      <div v-if="run.confirmation?.kind === 'adoptDestination'" class="ask" role="alertdialog">
         <h3>{{ t("run.adopt.title") }}</h3>
-        <p>{{ t("run.adopt.body", { path: confirmation.destination }) }}</p>
+        <p>{{ t("run.adopt.body", { path: run.confirmation.destination }) }}</p>
         <div class="actions">
           <button type="button" @click="confirm(false)">{{ t("run.decline") }}</button>
           <button type="button" class="primary" @click="confirm(true)">{{ t("run.adopt.confirm") }}</button>
@@ -169,11 +120,11 @@ const stampOfReport = computed(() => finished.value?.report.runId);
       </div>
 
       <!-- 需處理鎖定檔（ADR-0009） -->
-      <div v-if="locked" class="ask" role="alertdialog">
+      <div v-if="run.locked" class="ask" role="alertdialog">
         <h3>⚠ {{ t("run.locks.title") }}</h3>
         <p class="muted">{{ t("run.locks.help") }}</p>
         <ul class="locks">
-          <li v-for="g in locked" :key="g.app">
+          <li v-for="g in run.locked" :key="g.app">
             <button type="button" class="link" @click="openLock = openLock === g.app ? null : g.app">
               {{ t("run.locks.group", { app: g.app, count: g.files.length }) }}
             </button>
@@ -191,9 +142,9 @@ const stampOfReport = computed(() => finished.value?.report.runId);
       </div>
 
       <!-- 停下來問的時候，問題本身已經有「取消這次備份」，這裡不再放第二個 -->
-      <div v-if="!confirmation && !locked" class="actions">
-        <button type="button" :disabled="cancelling" @click="cancel">
-          {{ cancelling ? t("run.cancelPending") : t("run.cancel") }}
+      <div v-if="!run.confirmation && !run.locked" class="actions">
+        <button type="button" :disabled="run.cancelling" @click="cancelRun">
+          {{ run.cancelling ? t("run.cancelPending") : t("run.cancel") }}
         </button>
       </div>
     </template>
@@ -220,7 +171,7 @@ const stampOfReport = computed(() => finished.value?.report.runId);
       <div class="actions">
         <button type="button" class="primary" @click="emit('done')">{{ t("result.done") }}</button>
         <!-- 失敗或取消後：接上備份碟、關掉程式之後直接再跑一次；已經傳完的會被跳過（state-machines.md「中斷之後」） -->
-        <button v-if="report.outcome === 'failed' || report.outcome === 'cancelled'" type="button" @click="start">
+        <button v-if="report.outcome === 'failed' || report.outcome === 'cancelled'" type="button" @click="startRun(path, title)">
           {{ t("result.retry") }}
         </button>
         <button v-if="report.outcome !== 'failed'" type="button" @click="api.openFolder(path, 'current')">

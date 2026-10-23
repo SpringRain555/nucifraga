@@ -4,6 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
 import { t } from "./i18n/zh-TW";
 import { unsaved } from "./unsaved";
+import { initRunEvents } from "./run";
 import HomeView from "./views/HomeView.vue";
 import EditView from "./views/EditView.vue";
 import RunView from "./views/RunView.vue";
@@ -20,7 +21,7 @@ type Screen =
   | { name: "settings" }
   | { name: "folder"; current: string | null; suggested: string; inFolder: number; back: "home" | "settings" }
   | { name: "edit"; path: string; creating: boolean }
-  | { name: "run"; path: string; title: string }
+  | { name: "run"; path: string; title: string; attach: boolean }
   | { name: "history"; path: string; title: string }
   | { name: "versions"; path: string; title: string; destination: string };
 
@@ -71,6 +72,8 @@ async function openVersions(path: string, title: string) {
 }
 
 onMounted(async () => {
+  // 備份的事件從 app 一開就收，不跟著執行中畫面掛載與卸載（ui-workflows「進行中」）。
+  await initRunEvents();
   version.value = (await api.info()).version;
   // 第一次使用（還沒選模板資料夾）先選資料夾，再進首頁（ui-workflows.md「模板資料夾」）。
   const home = await api.home();
@@ -123,7 +126,8 @@ onMounted(async () => {
 
     <HomeView
       v-if="screen.name === 'home'"
-      @start="(path, title) => go({ name: 'run', path, title })"
+      @start="(path, title) => go({ name: 'run', path, title, attach: false })"
+      @view="(path, title) => go({ name: 'run', path, title, attach: true })"
       @edit="(path) => go({ name: 'edit', path, creating: false })"
       @create="(folder) => go({ name: 'edit', path: folder, creating: true })"
       @history="(path, title) => go({ name: 'history', path, title })"
@@ -136,7 +140,13 @@ onMounted(async () => {
       @folder="(current, suggested, inFolder) => go({ name: 'folder', current, suggested, inFolder, back: 'settings' })"
     />
     <EditView v-else-if="screen.name === 'edit'" :path="screen.path" :creating="screen.creating" @done="goHome" />
-    <RunView v-else-if="screen.name === 'run'" :path="screen.path" :title="screen.title" @done="goHome" />
+    <RunView
+      v-else-if="screen.name === 'run'"
+      :path="screen.path"
+      :title="screen.title"
+      :attach="screen.attach"
+      @done="goHome"
+    />
     <HistoryView v-else-if="screen.name === 'history'" :path="screen.path" :title="screen.title" @done="goHome" />
     <FolderView
       v-else-if="screen.name === 'folder'"

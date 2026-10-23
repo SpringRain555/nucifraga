@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(default = "one")]
@@ -19,10 +19,28 @@ pub struct Settings {
     /// 外部模板（資料夾外的模板檔）。
     #[serde(default)]
     pub profiles: Vec<ProfileRef>,
+    /// 背景模式（設定頁）：預設開。舊的設定檔沒有這個欄位，讀進來也是開。
+    #[serde(default = "yes")]
+    pub background_mode: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            schema_version: 1,
+            profiles_folder: None,
+            profiles: Vec::new(),
+            background_mode: true,
+        }
+    }
 }
 
 fn one() -> u32 {
     1
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

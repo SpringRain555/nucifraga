@@ -98,6 +98,7 @@ impl Fx {
             cancel,
             RunOptions {
                 fallback_report_dir: Some(self.fallback.clone()),
+                background: false,
             },
         )
         .run(&self.profile)
@@ -440,6 +441,7 @@ fn a_second_profile_must_be_allowed_to_share_a_disk() {
             Arc::new(AtomicBool::new(false)),
             RunOptions {
                 fallback_report_dir: None,
+                background: false,
             },
         )
         .run(&second)
@@ -448,4 +450,57 @@ fn a_second_profile_must_be_allowed_to_share_a_disk() {
     assert!(!read(&second).contains("destinationId"));
     assert_eq!(run(&YES).outcome, Outcome::Completed);
     assert!(read(&second).contains("destinationId"));
+}
+
+/// 強制結束（工作管理員、當機、拔碟）留下的那一次：有清單、沒有報告。
+/// 下一次備份要替它補一份「已取消＋ENG-005」的報告，清單照原樣保留，然後照常接下去。
+#[test]
+fn force_killed_run_is_closed_out_by_the_next_run() {
+    let fx = Fx::new();
+    fx.write("a.txt", "a");
+    let r1 = fx.run(&YES);
+    assert_eq!(r1.outcome, Outcome::Completed);
+
+    // 模擬被強制結束的那一次
+    let orphan = fx.dest.join("_reports").join("20000101-0000");
+    fs::create_dir_all(&orphan).unwrap();
+    let line = r#"{"root":"src","path":"a.txt","size":1,"sha256":"x","action":"copied"}"#;
+    fs::write(orphan.join("manifest.jsonl"), format!("{line}\n{line}\n")).unwrap();
+    assert_eq!(
+        nucifraga_core::report::unfinished_runs(&fx.dest),
+        ["20000101-0000"]
+    );
+
+    let r2 = fx.run(&YES);
+    assert_eq!(r2.outcome, Outcome::Completed, "{:?}", r2.issues);
+    assert!(nucifraga_core::report::unfinished_runs(&fx.dest).is_empty());
+    let closed: serde_json::Value =
+        serde_json::from_str(&read(&orphan.join("report.json"))).unwrap();
+    assert_eq!(closed["outcome"], "cancelled");
+    assert_eq!(closed["issues"][0]["code"], "ENG-005");
+    assert!(
+        closed["issues"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("2 個檔案"),
+        "{closed}"
+    );
+    assert!(orphan.join("manifest.jsonl").exists(), "清單要保留");
+}
+
+#[test]
+fn run_in_progress_sees_the_run_lock() {
+    let fx = Fx::new();
+    fx.write("a.txt", "a");
+    fx.run(&YES);
+    assert!(!nucifraga_core::fsops::run_in_progress(&fx.dest));
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(fx.dest.join(".nucifraga").join("run.lock"))
+        .unwrap();
+    held.lock().unwrap();
+    assert!(nucifraga_core::fsops::run_in_progress(&fx.dest));
+    held.unlock().unwrap();
+    assert!(!nucifraga_core::fsops::run_in_progress(&fx.dest));
 }

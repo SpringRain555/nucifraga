@@ -1,5 +1,7 @@
 // 台灣慣用格式（ui-workflows.md 原則 5）：2026/10/23 下午 3:05、1.2 GB、12,345。
 
+import { t } from "./i18n/zh-TW";
+
 const dateFmt = new Intl.DateTimeFormat("zh-TW", {
   year: "numeric",
   month: "2-digit",
@@ -54,4 +56,13 @@ export function splitList(text: string): string[] {
     .split(/[,，\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/** 預計剩下的時間：「約剩 25 分鐘」「約剩 1 小時 10 分鐘」；還估不出來時「估算剩餘時間中」。 */
+export function formatRemaining(seconds: number | null): string {
+  if (seconds === null) return t("run.eta.estimating");
+  if (seconds < 60) return t("run.eta.underMinute");
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return t("run.eta.minutes", { m: minutes });
+  return t("run.eta.hours", { h: Math.floor(minutes / 60), m: minutes % 60 });
 }

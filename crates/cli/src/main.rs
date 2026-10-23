@@ -41,6 +41,9 @@ enum Command {
         /// 結束時把完整報告以 JSON 印到標準輸出
         #[arg(long)]
         json: bool,
+        /// Windows 背景模式：CPU 與磁碟讓給前景的程式（比較慢，但不打擾正在用電腦的人）
+        #[arg(long)]
+        background: bool,
     },
     /// 列出所有錯誤碼、層級與訊息（內容來自 docs/architecture/error-codes.md）
     Codes,
@@ -106,6 +109,7 @@ fn main() -> ExitCode {
             adopt_destination,
             cancel_on_locked,
             json,
+            background,
         } => {
             let flags = Flags {
                 allow_mass_versioning,
@@ -124,6 +128,7 @@ fn main() -> ExitCode {
                 Arc::new(AtomicBool::new(false)),
                 RunOptions {
                     fallback_report_dir: fallback_dir(),
+                    background,
                 },
             );
             let report = runner.run(&profile);

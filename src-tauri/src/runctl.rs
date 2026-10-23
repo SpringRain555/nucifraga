@@ -69,6 +69,7 @@ pub fn start(
     app: AppHandle,
     profile: PathBuf,
     fallback: PathBuf,
+    background: bool,
     slot: Arc<Mutex<Option<Active>>>,
 ) -> Result<(), String> {
     let mut guard = slot.lock().map_err(|e| e.to_string())?;
@@ -101,6 +102,7 @@ pub fn start(
             cancel,
             RunOptions {
                 fallback_report_dir: Some(fallback),
+                background,
             },
         )
         .run(&profile);

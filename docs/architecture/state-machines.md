@@ -89,6 +89,9 @@ stateDiagram-v2
 - 執行鎖是作業系統的檔案鎖，行程死了就自動放開，不會留下「卡住的鎖」
 - 上次寫到一半的 `*.nucifraga-tmp` 在下一次的 `Preflight` 被清掉
 - 已經完成的檔案在目錄裡，大小與 mtime 吻合，`Planning` 會把它們算成「不變」
+- 被強制結束的那一次在 `_reports\<時間>\` 只有 `manifest.jsonl`、沒有 `report.json`。下一次的 `Preflight`（拿到執行鎖之後）
+  替它補一份報告：已取消＋`ENG-005`（「結束前寫好了 N 個檔案」）。**清單照原樣保留**，它記的是真的寫進備份碟的檔案。
+  在那之前，首頁就看得出來（`report::unfinished_runs`，前提是沒有人正拿著執行鎖）
 
 ## 2. 一個檔案（`FileOp`）
 

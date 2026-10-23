@@ -138,6 +138,8 @@ pub enum Event {
 pub struct RunOptions {
     /// 備份碟找不到時，報告寫到這裡（`<這裡>\<時間>\`）。
     pub fallback_report_dir: Option<PathBuf>,
+    /// Windows 背景模式：CPU 與磁碟讓給前景的程式，備份比較慢但不打擾（設定頁「背景模式」）。
+    pub background: bool,
 }
 
 pub struct Runner<'a> {
@@ -225,6 +227,10 @@ impl<'a> Runner<'a> {
     pub fn run(mut self, profile_file: &Path) -> Report {
         let started = now();
         let stamp_base = format_stamp(started);
+        // 跑備份的就是這個執行緒（檢查被佔用的檔案另外開的 worker 各自設定）。
+        if self.options.background {
+            sys::enter_background_mode();
+        }
         self.set(RunState::Preflight);
 
         let mut title = profile_file
@@ -361,6 +367,8 @@ impl<'a> Runner<'a> {
             self.issue(Issue::new(Code::Eng001, &[]));
         }
         fsops::clean_temp(&dest, &destination_id).map_err(Some)?;
+        // 已經拿到執行鎖，所以沒有收尾的那幾次一定是上次沒正常結束的，不是別人正在跑的。
+        close_unfinished(&dest, &profile);
         let vol = sys::volume_info(&dest);
         Ok(Ready {
             stamp,
@@ -629,7 +637,8 @@ impl<'a> Runner<'a> {
             .collect();
         loop {
             let cancel = self.cancel.clone();
-            let probed = locks::probe(&candidates, &cancel, &mut |done, total| {
+            let background = self.options.background;
+            let probed = locks::probe(&candidates, background, &cancel, &mut |done, total| {
                 let p = Progress {
                     files_done: done as u64,
                     files_total: total as u64,
@@ -902,6 +911,37 @@ fn volume_root(p: &Path) -> Option<PathBuf> {
 
 fn now() -> OffsetDateTime {
     OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
+}
+
+/// 替沒有正常結束的那幾次補一份報告（已取消＋`ENG-005`），讓紀錄與首頁看得到「上次沒有完成」。
+/// 那次的 `manifest.jsonl` 照原樣保留：它記的是真的寫進備份碟的檔案。補不成就算了，不影響這一次。
+fn close_unfinished(dest: &Path, profile: &Profile) {
+    for stamp in crate::report::unfinished_runs(dest) {
+        let dir = longpath::extended(&dest.join("_reports").join(&stamp));
+        let manifest = dir.join("manifest.jsonl");
+        let written = fs::read_to_string(&manifest)
+            .map(|t| t.lines().filter(|l| !l.trim().is_empty()).count())
+            .unwrap_or(0);
+        let meta = fs::metadata(&manifest).or_else(|_| fs::metadata(&dir)).ok();
+        let at = |t: Option<std::time::SystemTime>| {
+            t.map(OffsetDateTime::from).map(rfc3339).unwrap_or_default()
+        };
+        let mut report = Report {
+            schema_version: 1,
+            run_id: stamp.clone(),
+            profile: profile.title.clone(),
+            profile_path: profile.file.display().to_string(),
+            destination: Some(dest.display().to_string()),
+            outcome: Outcome::Cancelled,
+            started_at: at(meta.as_ref().and_then(|m| m.created().ok())),
+            finished_at: at(meta.as_ref().and_then(|m| m.modified().ok())),
+            counts: Counts::default(),
+            bytes_copied: 0,
+            issues: vec![Issue::new(Code::Eng005, &[("count", &written.to_string())])],
+            written_to: None,
+        };
+        let _ = report.write_to(&dir);
+    }
 }
 
 fn format_stamp(t: OffsetDateTime) -> String {

@@ -75,6 +75,10 @@ pub struct ProfileCard {
     destination: Option<String>,
     roots: Vec<String>,
     destination_connected: bool,
+    /// 這顆備份碟上現在有一次備份在跑（這個 app 或別的程式，例如排程的 CLI）。
+    busy: bool,
+    /// 上一次沒有正常結束（強制關閉、當機、拔碟），而且還沒有被下一次備份收尾。
+    interrupted: bool,
     /// 資料夾外的模板：可以「從清單移除」；資料夾裡的要移除就是把檔案搬走。
     external: bool,
     error: Option<Issue>,
@@ -85,6 +89,9 @@ fn card(path: &str, external: bool) -> ProfileCard {
     match profile::load(Path::new(path)) {
         Ok(p) => {
             let connected = nucifraga_core::run::destination_available(&p.destination);
+            let busy = connected && fsops::run_in_progress(&p.destination);
+            let interrupted =
+                connected && !busy && !report::unfinished_runs(&p.destination).is_empty();
             ProfileCard {
                 path: path.into(),
                 title: p.title.clone(),
@@ -95,6 +102,8 @@ fn card(path: &str, external: bool) -> ProfileCard {
                     .map(|r| r.path.display().to_string())
                     .collect(),
                 destination_connected: connected,
+                busy,
+                interrupted,
                 external,
                 error: None,
                 last: if connected {
@@ -113,6 +122,8 @@ fn card(path: &str, external: bool) -> ProfileCard {
             destination: None,
             roots: Vec::new(),
             destination_connected: false,
+            busy: false,
+            interrupted: false,
             external,
             error: Some(i),
             last: None,
@@ -263,6 +274,7 @@ pub struct Diagnostics {
     identifier: String,
     settings_file: String,
     fallback_reports: String,
+    background_mode: bool,
 }
 
 /// 設定頁的「關於與診斷」。
@@ -273,7 +285,22 @@ pub fn diagnostics(app: AppHandle, state: State<'_, AppState>) -> Diagnostics {
         identifier: app.config().identifier.clone(),
         settings_file: state.settings_file.display().to_string(),
         fallback_reports: state.fallback_reports.display().to_string(),
+        background_mode: state
+            .settings
+            .lock()
+            .map(|s| s.background_mode)
+            .unwrap_or(true),
     }
+}
+
+/// 設定頁「背景模式」。下一次備份起生效；正在跑的那一次不變。
+#[tauri::command]
+pub fn set_background_mode(state: State<'_, AppState>, on: bool) -> R<()> {
+    let mut s = state.settings.lock().map_err(internal)?;
+    s.background_mode = on;
+    let snapshot = s.clone();
+    drop(s);
+    save_settings(&state, &snapshot)
 }
 
 #[derive(Deserialize)]
@@ -457,10 +484,12 @@ pub fn reset_destination(state: State<'_, AppState>, path: String) -> R<()> {
 #[tauri::command]
 pub fn start_run(app: AppHandle, state: State<'_, AppState>, path: String) -> R<()> {
     known_profile(&state, &path)?;
+    let background = state.settings.lock().map_err(internal)?.background_mode;
     runctl::start(
         app,
         PathBuf::from(path),
         state.fallback_reports.clone(),
+        background,
         state.run.clone(),
     )
     .map_err(internal)

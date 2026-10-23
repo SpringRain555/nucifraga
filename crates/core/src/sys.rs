@@ -185,3 +185,20 @@ mod tests {
         assert!(!names.is_empty(), "自己開著的檔案應該查得到佔用者");
     }
 }
+
+/// 讓**目前這個執行緒**進入 Windows 的背景模式：CPU、磁碟 I/O、記憶體的優先權都降低，
+/// 前景的程式要用時先讓給它們（`THREAD_MODE_BACKGROUND_BEGIN`）。回傳是否成功。
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn enter_background_mode() -> bool {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN,
+    };
+    // SAFETY: GetCurrentThread 回傳的是代表目前執行緒的偽 handle，不需要也不能關閉。
+    unsafe { SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN) != 0 }
+}
+
+#[cfg(not(windows))]
+pub fn enter_background_mode() -> bool {
+    false
+}

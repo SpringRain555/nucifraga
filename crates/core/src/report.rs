@@ -253,6 +253,21 @@ pub fn list_reports(dest: &Path, limit: usize) -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// 備份碟上「有那次的資料夾、卻沒有 `report.json`」的那幾次 —— 程式沒有正常結束
+/// （強制關閉、當機、拔碟）。新的在前。正在跑的那一次也長這樣，所以呼叫前先確定沒有人在跑。
+pub fn unfinished_runs(dest: &Path) -> Vec<String> {
+    let dir = crate::longpath::extended(&dest.join("_reports"));
+    let mut names: Vec<String> = fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .filter(|n| crate::fsops::is_stamp(n) && !dir.join(n).join("report.json").exists())
+        .collect();
+    names.sort_by(|a, b| b.cmp(a));
+    names
+}
+
 /// 台灣慣用的大小格式：1.2 GB、350 KB。
 pub fn format_bytes(n: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];

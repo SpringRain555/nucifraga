@@ -34,6 +34,10 @@
 | 改用這顆碟 | `reset_destination`（清掉 `destinationId`） | 換了備份碟或磁碟代號之後，讓模板重新認碟 | 重設 |
 | 模板資料夾 | `profilesFolder`、`library` | 新模板存放的資料夾；首頁列出它第一層的每一份模板 | 設定資料夾、工作區 |
 | 外部模板 | `ProfileRef`（`profiles[]`）、`external` | 放在模板資料夾以外、app 只記路徑的模板檔 | 連結、捷徑 |
+| 進行中 | `run`（`ui/src/run.ts`）、`fsops::run_in_progress` | 正在跑的那一次備份；首頁上方一塊 | 工作佇列 |
+| 接續備份 | `startRun`（同「開始備份」） | 上次沒完成時「開始備份」的名字：已傳完的檔案不重傳 | 續傳、恢復 |
+| 背景模式 | `backgroundMode`、`sys::enter_background_mode` | 備份把 CPU 與磁碟讓給前景程式 | 低優先權、節流 |
+| 預計剩下的時間 | `Eta` | 傳輸時估計還要多久 | ETA |
 | 設定 | `SettingsView` | 模板資料夾、外部模板、關於與診斷的畫面 | 偏好設定、選項 |
 | 有未儲存的修改 | `unsaved`、`set_unsaved` | 模板編輯畫面的內容和載入時不同 | 未存檔、dirty |
 | 從清單移除 | `forget_profile` | 讓 app 不再顯示這份外部模板；**模板檔本身不刪** | 刪除模板 |

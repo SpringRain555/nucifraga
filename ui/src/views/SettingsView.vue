@@ -50,6 +50,14 @@ async function pickJson(): Promise<string | null> {
   return typeof p === "string" ? p : null;
 }
 
+async function toggleBackground(e: Event) {
+  const on = (e.target as HTMLInputElement).checked;
+  await run(async () => {
+    await api.setBackgroundMode(on);
+    if (diag.value) diag.value.backgroundMode = on;
+  });
+}
+
 async function addExisting() {
   const p = await pickJson();
   if (p) await run(async () => (await api.addProfile(p), await refresh()));
@@ -107,6 +115,15 @@ async function forget(path: string, title: string) {
       <div class="actions">
         <button type="button" @click="addExisting">{{ t("home.addExisting") }}</button>
       </div>
+    </section>
+
+    <section class="panel block">
+      <h3>{{ t("settings.speed.title") }}</h3>
+      <label class="check">
+        <input type="checkbox" :checked="diag?.backgroundMode ?? true" @change="toggleBackground" />
+        {{ t("settings.speed.background") }}
+      </label>
+      <p class="muted">{{ t("settings.speed.help") }}</p>
     </section>
 
     <section class="panel block">
@@ -199,5 +216,10 @@ async function forget(path: string, title: string) {
 }
 .hint {
   font-size: 0.85rem;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 </style>
