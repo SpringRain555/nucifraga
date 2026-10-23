@@ -5,7 +5,8 @@
 
 > 名稱來自星鴉屬（*Nucifraga*）：這種鳥秋天把種子藏在上千個地點，冬天還記得每一處在哪裡。
 
-**狀態：開發中（M0）**。還不能用來做真正的備份，進度見 [`docs/roadmap.md`](docs/roadmap.md)。
+**狀態：開發中（M1：桌機備份可以用；手機在 M2）**。進度見 [`docs/roadmap.md`](docs/roadmap.md)。
+第一次用在重要資料之前，建議先雙擊 `tools\Try-SampleBackup.cmd` 看它在假資料上怎麼運作。
 
 ## 它做什麼
 
@@ -35,7 +36,24 @@
 ```powershell
 .\tools\Launch.ps1 -Dev        # 開發模式
 .\tools\Verify.ps1             # 全部檢查（或雙擊 tools\Verify.cmd）
+.\tools\Try-SampleBackup.ps1   # 在 %TEMP% 的假資料上連跑兩次備份（或雙擊 tools\Try-SampleBackup.cmd）
 ```
+
+### 不開視窗（排程器、腳本）
+
+```powershell
+target\release\nucifraga-cli.exe run D:\路徑\模板.json
+```
+
+離開碼：0＝完成、1＝完成但有警告、2＝失敗、3＝已取消。沒有人可以回答問題時用保守的預設：
+「移到舊版本」數量異常就停下來（`--allow-mass-versioning` 改成繼續）、被佔用的檔案略過（`--cancel-on-locked` 改成取消）。
+
+### 在 app 裡
+
+1. **加入現有的模板檔**（或「建立新模板」）
+2. 在模板卡片上按 **開始備份**
+3. 有檔案被其他程式開著時，畫面會依程式列出來，讓你先關掉再「重新檢查」，或「略過這些檔案」
+4. 結束後看結果；被改掉或刪掉的檔案在「舊版本」，nucifraga 不會自己刪它們
 
 ## 往下讀哪一份
 

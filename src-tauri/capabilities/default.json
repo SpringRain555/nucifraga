@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主視窗的權限。刻意只開 core 的事件、視窗與 app 資訊；檔案操作一律走自訂 command（ADR-0007）。",
+  "description": "主視窗的權限。刻意只開 core 的事件、視窗與 app 資訊，加上「挑資料夾／檔案」對話框；檔案操作一律走自訂 command（ADR-0007）。",
   "windows": ["main"],
-  "permissions": ["core:event:default", "core:window:default", "core:app:default"]
+  "permissions": [
+    "core:event:default",
+    "core:window:default",
+    "core:app:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask"
+  ]
 }

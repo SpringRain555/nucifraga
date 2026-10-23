@@ -24,13 +24,13 @@
                          "document":  "state-machines.md",
                          "index":  1,
                          "svg":  "run-state.svg",
-                         "sha256":  "380fd448077d6d1585242cc5e4d3c9661c5b977b0142619e816a639b9e4f611e"
+                         "sha256":  "8a58dc373a4255e2ba2405a1d42c96fef9d81d517243c5e07e36f2787c4888d8"
                      },
                      {
                          "document":  "state-machines.md",
                          "index":  2,
                          "svg":  "file-op.svg",
-                         "sha256":  "db9be14c57783eb523d563f1908a7f346aa5a849e6228b839294eea9fa5dbef2"
+                         "sha256":  "aada546db6166620ebaa2e2053c2e2531ba993eb60e91ddf1c3bc7b49f5b2c9e"
                      },
                      {
                          "document":  "state-machines.md",

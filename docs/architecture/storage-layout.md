@@ -10,7 +10,8 @@
 ├─ .nucifraga\
 │  ├─ destination.json        目的地標記：這顆碟是哪一個目的地（id、建立時間、版面版本）
 │  ├─ catalog.sqlite          目錄：每個已備份檔案的來源大小／mtime／雜湊（可重建的快取）
-│  └─ run.lock                執行鎖：同一個目的地同時只能有一次執行
+│  ├─ run.lock                執行鎖：同一個目的地同時只能有一次執行
+│  └─ tmp\<n>.nucifraga-tmp   寫到一半的暫存檔；驗證過才改名搬進 current\（同一顆碟內的改名）
 ├─ current\<來源名>\…          鏡像：每個來源「目前」的樣子，檔案總管可以直接打開
 ├─ _versions\<yyyyMMdd-HHmm>\<來源名>\…
 │                              舊版本：那一次執行裡被覆蓋或被刪除的檔案，保留原本的資料夾結構
@@ -31,7 +32,7 @@
 | 東西 | 會被誰刪 | 條件 |
 |---|---|---|
 | `current\` 底下的檔案 | **不會被刪。** 來源刪了或改了，舊檔是被**搬**到 `_versions\` | — |
-| `current\` 底下的 `*.nucifraga-tmp` | engine | 自己這一次或上一次中斷留下的暫存檔；名稱必須完全符合格式 |
+| `.nucifraga\tmp\` 底下的 `<數字>.nucifraga-tmp` | core（預檢時、單檔失敗時） | 上一次中斷或這一次失敗留下的暫存檔；名稱必須完全符合格式。**暫存檔集中在這裡，不放在 `current\` 各處**，所以清理不必走訪整個鏡像 |
 | `_versions\<時間>\` | **只有使用者**，在「舊版本」畫面按刪除 | 預設永久保留（模板的 `versioning.retentionDays` 預設 `null`）；刪之前列出路徑、檔案數、大小 |
 | `_reports\` | 不刪 | 很小，留著當紀錄 |
 | `.nucifraga\catalog.sqlite` | core（重建時） | 開不起來或版本不符時改名成 `catalog.broken-<時間>.sqlite` 再重建，**不直接刪** |
@@ -40,7 +41,7 @@
 
 1. 路徑在目的地根之下（正規化之後比對，擋 `..` 與 junction）
 2. 目的地根有 `.nucifraga\destination.json`，而且 id 與模板記錄的一致
-3. 目標的名稱符合預期格式（`_versions` 底下是 `yyyyMMdd-HHmm(-n)?`，暫存檔是 `*.nucifraga-tmp`）
+3. 目標的名稱符合預期格式（`_versions` 底下是 `yyyyMMdd-HHmm(-n)?`，暫存檔是 `.nucifraga\tmp\<數字>.nucifraga-tmp`）
 
 三件任何一件不成立就拒絕並回 `ENG-010`。**刪除的路徑永遠不是由字串拼出來就直接用** ——
 這條規則的來由見 [lessons](../lessons.md)「遞迴刪除的路徑由變數拼出」。
@@ -74,6 +75,6 @@
 | 目的地檔案系統 | 支援 | 備註 |
 |---|---|---|
 | NTFS | ✅ | — |
-| exFAT | ✅ | 沒有日誌：拔除前要「安全移除」；不存 symlink／硬連結（來源的 reparse point 一律略過並列出，見 `SRC-006`） |
+| exFAT | ✅ | 沒有日誌：拔除前要「安全移除」。**2026-10-23 在實際的 exFAT 碟上實測**：硬連結與 junction 都建不起來；`\\?\` 長路徑寫入 377 字元的檔案並讀回成功；mtime 只有 **2 秒精度而且往上進位**（設 56.789 秒讀回 58.000 秒）；不分大小寫（`Case.txt` 與 `case.txt` 是同一個檔，見 `DST-008`）；改名覆蓋既有檔可行。來源的 reparse point 一律略過並列出（`SRC-006`） |
 | FAT32 | ⚠️ | 單檔上限 4 GiB：預檢時找出超過的檔案，報 `DST-006` 並略過那些檔案 |
 | 網路磁碟（SMB） | ⚠️ M1 不測 | 可以選，但不在驗收範圍 |

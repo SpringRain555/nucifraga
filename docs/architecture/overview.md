@@ -90,7 +90,9 @@ nucifraga/
 | 邊界 | 誰守 |
 |---|---|
 | `core` 不依賴 engine／UI | `Verify.ps1`：`cargo tree -p nucifraga-core` 裡不可出現 `nucifraga-mirror`、`tauri` |
-| 前端不碰檔案系統 | `Verify.ps1`：`package.json` 與 `Cargo.toml` 不可出現 `plugin-fs`／`plugin-shell`／`plugin-http`／`plugin-updater` |
+| 前端不碰檔案系統 | `Verify.ps1`「禁用 plugin」：我們的 `Cargo.toml`／`package.json` 不直接相依 fs／shell／http／updater、`src-tauri\src` 不註冊它們、capability 不授權 `fs:*` 等權限；`deny.toml` 只允許 fs 作為 dialog 的間接相依（ADR-0007） |
+| 只有一個模組能寫 unsafe | workspace lint `unsafe_code = "deny"`，只有 `nucifraga_core::sys` 用 `#[allow]` 開例外 |
+| 狀態機與文件一致 | `nucifraga_core::run::allowed` 的單元測試（state-machines.md「程式裡的對應」） |
 | 版本下限（CVE） | `Verify.ps1`：讀 `Cargo.lock`／`package-lock.json`，比對 [versions.md](../environment/versions.md) 的表 |
 | 不刪不可重生的東西 | `core` 的 `safe_delete` 是**唯一**的刪除入口，只接受「目的地根之下、已有標記檔、名稱符合格式」的路徑；單元測試覆蓋拒絕路徑 |
 | repo 不含私人路徑 | `D:\Projects\_meta\scripts\Test-PublishReadiness.ps1`（公開前） |

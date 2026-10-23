@@ -149,14 +149,28 @@ Get-FileHash -Algorithm SHA256 'E:\Backup\current\Projects\nucifraga\README.md'
   "schemaVersion": 1,
   "runId": "20261023-1015",
   "profile": "主機每週備份",
+  "profilePath": "D:\\_meta\\backup-policy.json",
+  "destination": "E:\\Backup",
   "outcome": "completedWithWarnings",   // completed | completedWithWarnings | failed | cancelled
-  "startedAt": "…", "finishedAt": "…",
-  "counts": { "scanned": 120345, "copied": 812, "updated": 40, "versioned": 52, "skipped": 3, "errors": 0 },
-  "bytes":  { "copied": 1234567890 },
+  "startedAt": "2026-10-23T10:15:02+08:00", "finishedAt": "…",
+  "counts": {
+    "scanned": 120345,    // 掃到的檔案
+    "unchanged": 119400,  // 大小與 mtime 都跟上一次一樣，連讀都沒讀
+    "copied": 812,        // 新增
+    "updated": 40,        // 內容變了、重新寫入
+    "versioned": 52,      // 搬到舊版本（被更新的舊檔＋來源已刪除的）
+    "verified": 38,       // mtime 變了但雜湊相同：只更新索引
+    "skipped": 3,         // 沒備份到（每一個都在 issues 裡）
+    "errors": 0
+  },
+  "bytesCopied": 1234567890,
   "issues": [
-    { "code": "SRC-004", "level": "warning", "root": "Projects", "path": "x/y.db", "detail": "被 sqlite3.exe 使用中" }
+    { "code": "SRC-004", "level": "warning", "message": "…", "action": "…", "root": "Projects", "path": "x/y.db", "detail": "…" }
   ]
 }
 ```
 
-`summary.txt` 是同一份資訊的中文散文版，每一個 issue 都用 [錯誤碼表](error-codes.md) 裡的訊息與建議動作。
+每一個 issue 的 `message` 與 `action` 在寫入時就照 [錯誤碼表](error-codes.md) 渲染好，所以舊報告不會因為之後改了訊息而變。
+`summary.txt` 是同一份資訊的中文散文版（UTF-8 加 BOM，給記事本讀）。
+
+**結果怎麼來的**見 state-machines.md「結果怎麼決定」。只有 `info` 層級的 issue（例如 `SRC-006` 略過 junction）時結果仍是「完成」。

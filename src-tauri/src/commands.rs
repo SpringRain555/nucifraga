@@ -1,0 +1,428 @@
+//! 前端能呼叫的全部命令（ADR-0007）。每一個都只收必要的參數，路徑一律在這裡驗證：
+//! 能碰的只有「已經在設定裡的模板」與「那份模板的備份碟底下」。
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
+
+use nucifraga_core::error::Code;
+use nucifraga_core::fsops::{self, VersionStamp};
+use nucifraga_core::jsonedit::quote;
+use nucifraga_core::profile::{self, PathPolicy, Profile, RootSpec};
+use nucifraga_core::report::{self, Issue};
+use nucifraga_core::run::LockDecision;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, State};
+
+use crate::runctl::{self, Active, Answer};
+use crate::settings::{self, ProfileRef, Settings};
+
+pub struct AppState {
+    pub settings_file: PathBuf,
+    pub settings: Mutex<Settings>,
+    pub settings_was_broken: bool,
+    pub fallback_reports: PathBuf,
+    pub run: Arc<Mutex<Option<Active>>>,
+}
+
+type R<T> = Result<T, Issue>;
+
+fn internal(e: impl ToString) -> Issue {
+    Issue::new(Code::Eng002, &[("detail", &e.to_string())])
+}
+
+/// 只接受設定裡已經有的模板 —— 前端不能拿任意路徑來讀寫。
+fn known_profile(state: &AppState, path: &str) -> R<Profile> {
+    let known = state
+        .settings
+        .lock()
+        .map_err(internal)?
+        .profiles
+        .iter()
+        .any(|p| p.path == path);
+    if !known {
+        return Err(internal("這份模板不在清單裡"));
+    }
+    profile::load(Path::new(path))
+}
+
+fn save_settings(state: &AppState, s: &Settings) -> R<()> {
+    settings::save(&state.settings_file, s)
+        .map_err(|e| Issue::new(Code::Cfg008, &[("detail", &e.to_string())]))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileCard {
+    path: String,
+    title: String,
+    destination: Option<String>,
+    roots: Vec<String>,
+    destination_connected: bool,
+    error: Option<Issue>,
+    last: Option<serde_json::Value>,
+}
+
+fn card(path: &str) -> ProfileCard {
+    match profile::load(Path::new(path)) {
+        Ok(p) => {
+            let connected = nucifraga_core::run::destination_available(&p.destination);
+            ProfileCard {
+                path: path.into(),
+                title: p.title.clone(),
+                destination: Some(p.destination.display().to_string()),
+                roots: p
+                    .roots
+                    .iter()
+                    .map(|r| r.path.display().to_string())
+                    .collect(),
+                destination_connected: connected,
+                error: None,
+                last: if connected {
+                    report::list_reports(&p.destination, 1).into_iter().next()
+                } else {
+                    None
+                },
+            }
+        }
+        Err(i) => ProfileCard {
+            path: path.into(),
+            title: Path::new(path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            destination: None,
+            roots: Vec::new(),
+            destination_connected: false,
+            error: Some(i),
+            last: None,
+        },
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Home {
+    profiles: Vec<ProfileCard>,
+    settings_was_broken: bool,
+    running: bool,
+}
+
+#[tauri::command]
+pub fn home(state: State<'_, AppState>) -> R<Home> {
+    let paths: Vec<String> = state
+        .settings
+        .lock()
+        .map_err(internal)?
+        .profiles
+        .iter()
+        .map(|p| p.path.clone())
+        .collect();
+    Ok(Home {
+        profiles: paths.iter().map(|p| card(p)).collect(),
+        settings_was_broken: state.settings_was_broken,
+        running: state.run.lock().map_err(internal)?.is_some(),
+    })
+}
+
+fn now_text() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
+}
+
+fn remember(state: &AppState, path: &str) -> R<()> {
+    let mut s = state.settings.lock().map_err(internal)?;
+    if !s.profiles.iter().any(|p| p.path == path) {
+        s.profiles.push(ProfileRef {
+            path: path.into(),
+            added_at: now_text(),
+        });
+        let snapshot = s.clone();
+        drop(s);
+        save_settings(state, &snapshot)?;
+    }
+    Ok(())
+}
+
+/// 「加入現有的模板檔」：讀不懂就不加入，直接回那個 CFG-*。
+#[tauri::command]
+pub fn add_profile(state: State<'_, AppState>, path: String) -> R<()> {
+    profile::load(Path::new(&path))?;
+    remember(&state, &path)
+}
+
+#[tauri::command]
+pub fn create_profile(
+    state: State<'_, AppState>,
+    path: String,
+    title: String,
+    destination: String,
+    roots: Vec<String>,
+) -> R<()> {
+    profile::create(Path::new(&path), &title, &destination, &roots)?;
+    remember(&state, &path)
+}
+
+/// 從清單移除（**不刪模板檔**）。
+#[tauri::command]
+pub fn forget_profile(state: State<'_, AppState>, path: String) -> R<()> {
+    let mut s = state.settings.lock().map_err(internal)?;
+    s.profiles.retain(|p| p.path != path);
+    let snapshot = s.clone();
+    drop(s);
+    save_settings(&state, &snapshot)
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RootForm {
+    path: String,
+    name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileForm {
+    title: String,
+    destination: String,
+    roots: Vec<RootForm>,
+    exclude_dir_names: Vec<String>,
+    exclude_globs: Vec<String>,
+    block_long_paths: bool,
+    verify_after_copy: bool,
+    always_skip_locked: Vec<String>,
+}
+
+#[tauri::command]
+pub fn get_profile(state: State<'_, AppState>, path: String) -> R<ProfileForm> {
+    let p = known_profile(&state, &path)?;
+    let raw = &p.raw;
+    Ok(ProfileForm {
+        title: p.title.clone(),
+        destination: raw.destination.root.clone(),
+        roots: raw
+            .roots
+            .iter()
+            .map(|r| RootForm {
+                path: r.path.clone(),
+                name: r.name.clone(),
+            })
+            .collect(),
+        exclude_dir_names: raw.exclude_dir_names.clone(),
+        exclude_globs: raw.nucifraga.exclude_globs.clone(),
+        block_long_paths: raw.nucifraga.path_policy == PathPolicy::Block,
+        verify_after_copy: raw.nucifraga.verify_after_copy,
+        always_skip_locked: raw.nucifraga.always_skip_locked.clone(),
+    })
+}
+
+fn json<T: Serialize>(v: &T) -> String {
+    serde_json::to_string(v).expect("一定序列化得了")
+}
+
+/// 只把**改過的**欄位寫回去（ADR-0006），整份驗過才寫入。
+#[tauri::command]
+pub fn save_profile(state: State<'_, AppState>, path: String, form: ProfileForm) -> R<()> {
+    let p = known_profile(&state, &path)?;
+    let raw = &p.raw;
+    let mut edits: Vec<(Vec<&str>, String)> = Vec::new();
+    if form.title != p.title {
+        edits.push((vec!["nucifraga", "title"], quote(&form.title)));
+    }
+    if form.destination != raw.destination.root {
+        edits.push((vec!["destination", "root"], quote(&form.destination)));
+    }
+    let old_roots: Vec<RootForm> = raw
+        .roots
+        .iter()
+        .map(|r| RootForm {
+            path: r.path.clone(),
+            name: r.name.clone(),
+        })
+        .collect();
+    if form.roots != old_roots {
+        // 原本的 pathCheck（backup-policy.json 的欄位）照樣保留。
+        let specs: Vec<RootSpec> = form
+            .roots
+            .iter()
+            .map(|r| RootSpec {
+                path: r.path.clone(),
+                name: r.name.clone().filter(|n| !n.trim().is_empty()),
+                path_check: raw
+                    .roots
+                    .iter()
+                    .find(|o| o.path.eq_ignore_ascii_case(&r.path))
+                    .and_then(|o| o.path_check),
+            })
+            .collect();
+        edits.push((vec!["roots"], json(&specs)));
+    }
+    if form.exclude_dir_names != raw.exclude_dir_names {
+        edits.push((vec!["excludeDirNames"], json(&form.exclude_dir_names)));
+    }
+    let o = &raw.nucifraga;
+    if form.exclude_globs != o.exclude_globs {
+        edits.push((vec!["nucifraga", "excludeGlobs"], json(&form.exclude_globs)));
+    }
+    if form.block_long_paths != (o.path_policy == PathPolicy::Block) {
+        edits.push((
+            vec!["nucifraga", "pathPolicy"],
+            quote(if form.block_long_paths {
+                "block"
+            } else {
+                "warn"
+            }),
+        ));
+    }
+    if form.verify_after_copy != o.verify_after_copy {
+        edits.push((
+            vec!["nucifraga", "verifyAfterCopy"],
+            json(&form.verify_after_copy),
+        ));
+    }
+    if form.always_skip_locked != o.always_skip_locked {
+        edits.push((
+            vec!["nucifraga", "alwaysSkipLocked"],
+            json(&form.always_skip_locked),
+        ));
+    }
+    if edits.is_empty() {
+        return Ok(());
+    }
+    profile::save_edits(Path::new(&path), &edits).map(|_| ())
+}
+
+/// DST-003 的「改用這顆碟」：清掉模板記住的備份碟，下次執行時重新認碟。
+#[tauri::command]
+pub fn reset_destination(state: State<'_, AppState>, path: String) -> R<()> {
+    known_profile(&state, &path)?;
+    profile::write_value(Path::new(&path), &["nucifraga", "destinationId"], "null")
+}
+
+#[tauri::command]
+pub fn start_run(app: AppHandle, state: State<'_, AppState>, path: String) -> R<()> {
+    known_profile(&state, &path)?;
+    runctl::start(
+        app,
+        PathBuf::from(path),
+        state.fallback_reports.clone(),
+        state.run.clone(),
+    )
+    .map_err(internal)
+}
+
+fn send(state: &AppState, answer: Answer) -> R<()> {
+    let g = state.run.lock().map_err(internal)?;
+    let active = g.as_ref().ok_or_else(|| internal("目前沒有在備份"))?;
+    active.answers.send(answer).map_err(internal)
+}
+
+#[tauri::command]
+pub fn answer_confirmation(state: State<'_, AppState>, yes: bool) -> R<()> {
+    send(&state, Answer::Confirm(yes))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LockAnswer {
+    Retry,
+    Skip,
+    SkipAndRemember,
+    Cancel,
+}
+
+#[tauri::command]
+pub fn answer_locks(state: State<'_, AppState>, answer: LockAnswer) -> R<()> {
+    let d = match answer {
+        LockAnswer::Retry => LockDecision::Retry,
+        LockAnswer::Skip => LockDecision::Skip { remember: false },
+        LockAnswer::SkipAndRemember => LockDecision::Skip { remember: true },
+        LockAnswer::Cancel => LockDecision::Cancel,
+    };
+    send(&state, Answer::Lock(d))
+}
+
+/// 取消：做完手上這一個檔案就停。正在等使用者回答的話，一併當成「不要」。
+#[tauri::command]
+pub fn cancel_run(state: State<'_, AppState>, then_quit: bool) -> R<()> {
+    let g = state.run.lock().map_err(internal)?;
+    if let Some(a) = g.as_ref() {
+        a.cancel.store(true, Ordering::Relaxed);
+        if then_quit {
+            a.quit_when_done.store(true, Ordering::Relaxed);
+        }
+        let _ = a.answers.send(Answer::Confirm(false));
+        let _ = a.answers.send(Answer::Lock(LockDecision::Cancel));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history(state: State<'_, AppState>, path: String) -> R<Vec<serde_json::Value>> {
+    let p = known_profile(&state, &path)?;
+    Ok(report::list_reports(&p.destination, 100))
+}
+
+#[tauri::command]
+pub fn versions(state: State<'_, AppState>, path: String) -> R<Vec<VersionStamp>> {
+    let p = known_profile(&state, &path)?;
+    Ok(fsops::list_versions(&p.destination))
+}
+
+/// 「永久刪除這個時間點」。**只在使用者在確認對話框按下按鈕後呼叫**；所有檢查在 fsops 裡。
+#[tauri::command]
+pub fn delete_version(state: State<'_, AppState>, path: String, stamp: String) -> R<VersionStamp> {
+    let p = known_profile(&state, &path)?;
+    let id = p
+        .destination_id
+        .clone()
+        .ok_or_else(|| Issue::new(Code::Eng010, &[("path", &stamp)]))?;
+    fsops::delete_version_stamp(&p.destination, &id, &stamp)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Place {
+    Current,
+    Report,
+    Version,
+}
+
+/// 用檔案總管打開備份碟上的一個資料夾。只接受那份模板備份碟底下的三種位置。
+#[tauri::command]
+pub fn open_folder(
+    state: State<'_, AppState>,
+    path: String,
+    place: Place,
+    stamp: Option<String>,
+) -> R<()> {
+    let p = known_profile(&state, &path)?;
+    let stamp_ok = |s: &Option<String>| {
+        s.as_deref()
+            .filter(|s| fsops::is_stamp(s))
+            .map(str::to_string)
+    };
+    let target = match place {
+        Place::Current => p.destination.join("current"),
+        Place::Report => p
+            .destination
+            .join("_reports")
+            .join(stamp_ok(&stamp).ok_or_else(|| internal("時間點格式不對"))?),
+        Place::Version => p
+            .destination
+            .join("_versions")
+            .join(stamp_ok(&stamp).ok_or_else(|| internal("時間點格式不對"))?),
+    };
+    if !target.exists() {
+        return Err(Issue::new(
+            Code::Dst001,
+            &[("path", &target.display().to_string())],
+        ));
+    }
+    std::process::Command::new("explorer.exe")
+        .arg(&target)
+        .spawn()
+        .map(|_| ())
+        .map_err(internal)
+}

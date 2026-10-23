@@ -20,6 +20,10 @@
 - 前端能做的事全部是 `src-tauri` 裡**明確列出的 Rust command**，每個 command 只收必要的參數，
   路徑一律在 Rust 端驗證
 - 選資料夾、選檔案的對話框用 `tauri-plugin-dialog`：它只回傳使用者選的路徑，不給前端讀寫權
+  - **2026-10-23 補充**：dialog 在 Rust 端相依 `tauri-plugin-fs`（拿來把選到的路徑加進 fs 的 scope），所以 fs **會被編進 exe**。
+    這條決定守的是「前端拿不到」，所以守門改成三件事：我們不直接相依 fs、不註冊 fs plugin、capability 不給任何 `fs:*` 權限
+    （`tools\Verify.ps1`「禁用 plugin」）；`deny.toml` 只允許 fs 作為 dialog 的相依（`wrappers`）。
+    發現經過：第一版的守門掃 `Cargo.lock`，加進 dialog 那天就紅了 —— 守門是對的，只是守錯了層次
 - 「打開資料夾」用 Rust command 呼叫 `explorer.exe /select,<路徑>`，路徑必須在已知的備份碟或模板目錄之下
 - CSP 嚴格：`default-src 'self'`，`script-src 'self'`，**不放 `data:`、`blob:`、`unsafe-inline`、`unsafe-eval`**
   （對應 CVE-2026-95626 的 CSP 繞過）

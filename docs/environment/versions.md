@@ -26,6 +26,7 @@
 | vite | npm | 8.0.16 | CVE-2026-53571（Windows 上用 NTFS 替代資料流繞過 `server.fs.deny`）在 8.0.16 修補；也涵蓋 8.0.5 修的 CVE-2026-39364／39363 | A |
 | @tauri-apps/cli | npm | 2.12.4 | 2.12.4 的發行說明：把 `zip` 升到 v9 以修 RUSTSEC-2026-0367／0368／0369（B，GitHub releases 頁，以 WebFetch 讀取，未存檔） | B |
 | @tauri-apps/api | npm | 2.12.4 | 與 CLI 同版 | — |
+| rusqlite | cargo | 0.40.2 | bundled 的 SQLite 要 ≥ 3.53.2：CVE-2026-11822／11824（FTS5 寫出界）在 3.53.2 修補（A，sqlite.org 0ef51a811fdc）；rusqlite 0.40.2 是第一個 bundle 3.53.2 的版本（C，第三方） | A／C |
 <!-- /version-floors -->
 
 **表裡的每一列都必須真的出現在 lock 檔裡**（Verify 會檢查）—— 否則那條下限只是一行字，沒有任何東西在守它。
@@ -33,7 +34,7 @@
 
 | 套件 | 生態 | 下限 | 理由 | 可信度 | 何時引進 |
 |---|---|---|---|:-:|---|
-| rusqlite | cargo | 0.40.2 | bundled 的 SQLite 要 ≥ 3.53.2：CVE-2026-11822／11824（FTS5 寫出界）在 3.53.2 修補（A，sqlite.org 0ef51a811fdc）；rusqlite 0.40.2 是第一個 bundle 3.53.2 的版本（C，第三方） | A／C | M1（索引） |
+| （目前沒有） | | | | | |
 
 ## 上限（不能升的）
 

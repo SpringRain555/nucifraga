@@ -29,7 +29,10 @@
 | 報告 | `Report`（`report.json`、`summary.txt`） | 一次執行的結果紀錄 | 日誌 |
 | 清單 | `Manifest`（`manifest.jsonl`） | 這次寫入或驗證過的每個檔案與雜湊 | 索引 |
 | 索引 | `Catalog`（`catalog.sqlite`） | 備份碟上的快取，記住每個檔案上次的大小、時間、雜湊 | 資料庫、清單 |
-| 備份碟標記 | `DestinationMarker`（`destination.json`） | 認出「這是哪一顆備份碟」 | — |
+| 備份碟標記 | `Marker`（`destination.json`） | 認出「這是哪一顆備份碟」 | — |
+| 共用這顆碟 | `Confirmation::AdoptDestination` | 讓一份新模板使用一顆已經屬於別的模板的備份碟 | 綁定 |
+| 改用這顆碟 | `reset_destination`（清掉 `destinationId`） | 換了備份碟或磁碟代號之後，讓模板重新認碟 | 重設 |
+| 從清單移除 | `forget_profile` | 讓 app 不再顯示這份模板；**模板檔本身不刪** | 刪除模板 |
 | 路徑過長 | `PATH-001`／`PATH-002` | 超過檔案總管能處理的長度 | — |
 | 配對 | `Pairing`（M2） | 讓桌機與手機互相認得 | 綁定、連結 |
 

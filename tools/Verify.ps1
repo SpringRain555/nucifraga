@@ -106,10 +106,25 @@ try {
         if ($bad) { throw "nucifraga-core 不可以依賴：$($bad -join '、')。把那段程式移到上層的 crate。" }
     }
 
+    # ADR-0007 要守的是「前端拿不到」：不直接相依、不註冊、capability 不授權。
+    # 不看 Cargo.lock —— tauri-plugin-dialog 在 Rust 端相依 fs，那是編進來、不是開放給前端（deny.toml 的 wrappers 管它）。
     Step '禁用 plugin' {
-        $pattern = '(tauri-plugin-(fs|shell|http|updater)\b)|(@tauri-apps/plugin-(fs|shell|http|updater)\b)'
-        $hits = Select-String -LiteralPath (Join-Path $root 'Cargo.lock'), (Join-Path $root 'package-lock.json') -Pattern $pattern
-        if ($hits) { throw "出現了 ADR-0007 禁用的 plugin：$(($hits | ForEach-Object { $_.Matches[0].Value } | Select-Object -Unique) -join '、')" }
+        $problems = @()
+        $manifests = @((Join-Path $root 'Cargo.toml')) + @(Get-ChildItem -LiteralPath $root -Recurse -Filter Cargo.toml -File |
+            Where-Object { $_.FullName -notmatch '\\(target|node_modules)\\' } | ForEach-Object { $_.FullName })
+        foreach ($m in ($manifests | Select-Object -Unique)) {
+            $hit = Select-String -LiteralPath $m -Pattern '^\s*tauri-plugin-(fs|shell|http|updater)\b'
+            if ($hit) { $problems += "$($m.Substring($root.Length + 1)) 直接相依 $($hit[0].Matches[0].Value.Trim())" }
+        }
+        $npm = Select-String -LiteralPath (Join-Path $root 'package.json'), (Join-Path $root 'package-lock.json') -Pattern '@tauri-apps/plugin-(fs|shell|http|updater)\b'
+        if ($npm) { $problems += "npm：$($npm[0].Matches[0].Value)" }
+        foreach ($cap in Get-ChildItem -LiteralPath (Join-Path $root 'src-tauri\capabilities') -Filter *.json) {
+            $perm = Select-String -LiteralPath $cap.FullName -Pattern '"(fs|shell|http|updater):[^"]*"'
+            if ($perm) { $problems += "$($cap.Name) 授權了 $($perm[0].Matches[0].Value)" }
+        }
+        $reg = Get-ChildItem -LiteralPath (Join-Path $root 'src-tauri\src') -Filter *.rs | Select-String -Pattern 'tauri_plugin_(fs|shell|http|updater)\b'
+        if ($reg) { $problems += "$($reg[0].Filename) 註冊或使用了 $($reg[0].Matches[0].Value)" }
+        if ($problems) { throw "違反 ADR-0007：$($problems -join '；')" }
     }
 
     Step '版本下限' {
@@ -160,7 +175,9 @@ try {
         $hits = foreach ($f in Get-ChildItem -LiteralPath (Join-Path $root 'ui\src') -Recurse -Filter *.vue) {
             $text = [IO.File]::ReadAllText($f.FullName)
             foreach ($tm in [regex]::Matches($text, '(?s)<template>(.*)</template>')) {
-                if ($tm.Groups[1].Value -match '[\u3400-\u9fff\uff00-\uffef]') { $f.Name }
+                # \u8a3b\u89e3\u88e1\u7684\u4e2d\u6587\u662f\u5beb\u7d66\u958b\u767c\u8005\u770b\u7684\uff0c\u4e0d\u662f UI \u5b57\u4e32\u3002
+                $body = [regex]::Replace($tm.Groups[1].Value, '(?s)<!--.*?-->', '')
+                if ($body -match '[\u3400-\u9fff\uff00-\uffef]') { $f.Name }
             }
         }
         if ($hits) { throw "這些元件的 <template> 裡有寫死的中文，改用 t('...')：$($hits -join '、')" }

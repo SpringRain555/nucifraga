@@ -11,7 +11,9 @@ unmaintained = "workspace"
 [bans]
 multiple-versions = "allow"
 deny = [
-    { crate = "tauri-plugin-fs", reason = "ADR-0007：前端不碰檔案系統" },
+    # tauri-plugin-dialog 在 Rust 端相依 fs（把使用者選的路徑加進 fs 的 scope）。編進來不等於開放給前端：
+    # 我們不註冊 fs plugin、capability 也不給任何 fs:* 權限（Verify 的「禁用 plugin」一步守著這兩件）。
+    { crate = "tauri-plugin-fs", wrappers = ["tauri-plugin-dialog"], reason = "ADR-0007：前端不碰檔案系統；只允許作為 dialog 的相依" },
     { crate = "tauri-plugin-shell", reason = "ADR-0007" },
     { crate = "tauri-plugin-http", reason = "ADR-0007" },
     { crate = "tauri-plugin-updater", reason = "ADR-0007：不做自動更新" },
@@ -19,19 +21,16 @@ deny = [
 
 [licenses]
 confidence-threshold = 0.9
+# 只列實際用到的授權（cargo deny 會對沒用到的那幾條提出警告）。新的相依帶來新授權時，看過條款再加。
 allow = [
     "MIT",
     "MIT-0",
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
     "BSD-3-Clause",
-    "ISC",
     "Zlib",
     "Unicode-3.0",
     "MPL-2.0",
     "CC0-1.0",
-    "BSL-1.0",
 ]
 
 [sources]

@@ -42,7 +42,7 @@ codes! {
     Cfg001 => "CFG-001", Cfg002 => "CFG-002", Cfg003 => "CFG-003", Cfg004 => "CFG-004",
     Cfg005 => "CFG-005", Cfg006 => "CFG-006", Cfg007 => "CFG-007", Cfg008 => "CFG-008",
     Dst001 => "DST-001", Dst002 => "DST-002", Dst003 => "DST-003", Dst004 => "DST-004",
-    Dst005 => "DST-005", Dst006 => "DST-006", Dst007 => "DST-007",
+    Dst005 => "DST-005", Dst006 => "DST-006", Dst007 => "DST-007", Dst008 => "DST-008",
     Src001 => "SRC-001", Src002 => "SRC-002", Src003 => "SRC-003", Src004 => "SRC-004",
     Src005 => "SRC-005", Src006 => "SRC-006", Src007 => "SRC-007",
     Path001 => "PATH-001", Path002 => "PATH-002", Path003 => "PATH-003",

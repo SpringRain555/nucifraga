@@ -13,6 +13,8 @@ stateDiagram-v2
   Idle --> Preflight: 使用者按「開始備份」／CLI 執行
   Preflight --> Scanning: 沒有致命問題
   Preflight --> Finalizing: 致命問題（DST-001/003/007、CFG-*）
+  Preflight --> AwaitingConfirmation: 這顆碟已經屬於別的模板
+  AwaitingConfirmation --> Preflight: 使用者同意共用這顆碟
   Scanning --> Planning
   Scanning --> Finalizing: 目的地消失（DST-001）
   Planning --> Finalizing: 沒有任何變更
@@ -22,6 +24,7 @@ stateDiagram-v2
   AwaitingConfirmation --> Finalizing: 使用者拒絕（cancelled）
   CheckingLocks --> Transferring: 沒有鎖定檔／非 Windows
   CheckingLocks --> AwaitingLockDecision: 有檔案被佔用（SRC-003）
+  CheckingLocks --> Finalizing: 使用者取消
   AwaitingLockDecision --> CheckingLocks: 重試
   AwaitingLockDecision --> Transferring: 略過這些檔案
   AwaitingLockDecision --> Finalizing: 取消（cancelled）
@@ -44,7 +47,7 @@ stateDiagram-v2
 | `Preflight` | 讀模板、驗模板（`CFG-*`）、目的地在不在、標記檔對不對、拿目的地的執行鎖、開目錄、清掉上次中斷留下的暫存檔 | ✅ |
 | `Scanning` | 走訪每個來源，只做 `stat`；套用排除規則；記下 reparse point、雲端佔位檔 | ✅ |
 | `Planning` | 對照目錄算出計畫：新增、更新、搬到舊版本、不變；算出需要的空間與路徑預算 | ✅ |
-| `AwaitingConfirmation` | 等使用者對「這次會把 N 個檔案搬到舊版本」表態 | ✅（＝拒絕） |
+| `AwaitingConfirmation` | 等使用者表態，兩種情況：「這次會把 N 個檔案搬到舊版本」（從比對來），或「這顆碟已經是別的模板的備份碟，要共用嗎」（從預檢來，同意後回到預檢） | ✅（＝拒絕） |
 | `CheckingLocks` | **只對計畫裡要讀的檔案**以共用讀取試開；打不開的用 Restart Manager 查佔用者（ADR-0009） | ✅ |
 | `AwaitingLockDecision` | UI 依程式分組列出（「Outlook：3 個檔案」），等使用者選重試／略過／取消 | ✅ |
 | `Transferring` | 逐檔執行計畫（見 §2）；每完成一檔就更新目錄 | ✅（做完手上這一檔才停） |
@@ -68,8 +71,15 @@ stateDiagram-v2
 
 | 狀態 | 預設 | 改變預設的旗標 |
 |---|---|---|
-| `AwaitingConfirmation` | 拒絕 → `Cancelled`，報 `ENG-004` | `--allow-mass-versioning` |
+| `AwaitingConfirmation`（數量異常） | 拒絕 → `Cancelled`，報 `ENG-004` | `--allow-mass-versioning` |
+| `AwaitingConfirmation`（共用備份碟） | 拒絕 → `Cancelled` | `--adopt-destination` |
 | `AwaitingLockDecision` | 略過那些檔案 → 繼續，報 `SRC-003` | `--cancel-on-locked` |
+
+### 程式裡的對應
+
+`nucifraga_core::run::allowed` 是上面那張圖的每一條箭頭，`Runner` 每次轉移都檢查它（不在表裡就 panic）。
+單元測試釘住「終止狀態只能從收尾進入」「每個非終止狀態都能直接去收尾」「終止狀態是死路」三件事。
+**改圖就要改 `allowed`，反之亦然。**
 
 ### 中斷之後
 
@@ -88,6 +98,7 @@ stateDiagram-v2
   [*] --> Pending
   Pending --> CopyingToTemp: 新增或更新
   Pending --> MovingToVersions: 來源已刪除
+  Pending --> Committed: 備份碟上已經有、而且雜湊與來源相同（只有 mtime 被碰過、索引重建、上次中斷）—— 只更新索引
   CopyingToTemp --> VerifyingTemp: 寫完（邊寫邊算來源的 SHA-256）
   CopyingToTemp --> Skipped: 讀不到／被鎖／寫入失敗
   VerifyingTemp --> SupersedingOld: 讀回的雜湊相同
@@ -102,7 +113,9 @@ stateDiagram-v2
 **順序是刻意的：先把新檔完整寫好、驗證過，才動舊檔。** 任何一步失敗，`current\` 裡的那個檔案
 不是舊的完整版本就是新的完整版本 —— 永遠不會「舊的搬走了、新的沒寫成」。
 
-- `verifyAfterCopy: false` 的模板跳過 `VerifyingTemp`（不建議；預設開）
+- `verifyAfterCopy: false` 的模板跳過 `VerifyingTemp`（不建議；預設開）。讀回用寫入時的同一個 handle，
+  讀到的多半是作業系統快取：它抓得到「寫進去的跟算的不一樣」，抓不到碟的磁區壞掉（見 benchmarks.md）
+- 暫存檔放在 `.nucifraga\tmp\`，改名跨資料夾但不跨碟
 - 複製期間來源的大小或 mtime 變了 → 重試一次；還是變 → `SRC-005`，略過
 - `SupersedingOld` 與 `MovingToVersions` 都是**同一個磁碟內的改名**，不複製內容，很快
 

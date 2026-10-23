@@ -47,7 +47,7 @@
 | | |
 |---|---|
 | **執行環境** | Rust 1.99.1（`rust-toolchain.toml`）＋ Node 24。**不要用 PATH 上的 `cargo`／`node`**：用 `%USERPROFILE%\.cargo\bin\cargo.exe`、`%ProgramFiles%\nodejs\node.exe`，或環境變數 `NUCIFRAGA_CARGO`／`NUCIFRAGA_NODE`。細節在 `docs\environment\index.md` |
-| **一鍵啟動** | `start_nucifraga.cmd` → `tools\Launch.ps1`（`-Dev` 開發模式、`-Foreground` 看完整錯誤） |
+| **一鍵啟動** | `start_nucifraga.cmd` → `tools\Launch.ps1`（`-Dev` 開發模式、`-Foreground` 看完整錯誤）。試跑：`tools\Try-SampleBackup.cmd`（只寫 `%TEMP%`）；規模基準：`tools\Bench-Scale.ps1` |
 | **產生物，不可手改** | `AGENTS.md`（跑 `tools\Sync-AgentDocs.ps1`）、`docs\architecture\diagrams\*.svg`（跑 `tools\diagrams\Render-Diagrams.ps1`）、`Cargo.lock`／`package-lock.json`（只透過 cargo／npm 改） |
 | **單一真實來源** | 錯誤碼 → `docs\architecture\error-codes.md`（與 `nucifraga_core::error` 一對一，測試比對）；用語 → `docs\architecture\glossary.md`；版本下限 → `docs\environment\versions.md` 的下限表（`Verify.ps1` 解析它） |
 | **依賴方向** | `app`／`cli` → `mirror` → `core`。`nucifraga-core` 不可依賴 engine 或 tauri（Verify 檢查） |
@@ -91,3 +91,5 @@
 - 不要讓 `current\` 底下的檔案在任何步驟「先刪後寫」：一律先寫暫存檔、驗證、把舊檔搬走、再改名（state-machines §2）
 - 不要在元件裡寫死 UI 字串；一律走 `ui\src\i18n\zh-TW.ts`
 - 不要先建 `android\`、`proto\` 的空殼（M2 才建）
+- 不要把 `tauri-plugin-fs` 從 `deny.toml` 的 bans 拿掉：它被編進來只是因為 dialog 相依它（ADR-0007 補充），不註冊、不授權
+- 不要在任何真的備份碟或使用者資料夾上跑測試；端到端測試與試跑一律在 `%TEMP%` 的亂數資料夾
