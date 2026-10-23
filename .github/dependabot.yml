@@ -9,6 +9,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # TypeScript 刻意釘在 6.x：vue-tsc 還不支援 7（versions.md 的上限、lessons「vue-tsc＋TS 7」）。
+      # vue-tsc 支援之後拿掉這一條。
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
