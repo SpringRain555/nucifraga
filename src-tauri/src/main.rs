@@ -66,6 +66,7 @@ fn main() {
                 settings_file,
                 settings: Mutex::new(loaded.settings),
                 settings_was_broken: loaded.was_broken,
+                suggested_folder: app.path().document_dir()?.join("Nucifraga"),
                 fallback_reports: local.join("reports"),
                 run: Arc::new(Mutex::new(None)),
             });
@@ -89,6 +90,8 @@ fn main() {
             commands::add_profile,
             commands::create_profile,
             commands::forget_profile,
+            commands::set_profiles_folder,
+            commands::open_profiles_folder,
             commands::get_profile,
             commands::save_profile,
             commands::reset_destination,

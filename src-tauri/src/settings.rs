@@ -1,4 +1,7 @@
 //! app 設定 `%APPDATA%\<identifier>\settings.json`：只記「模板在哪」，不複製模板內容（ADR-0006）。
+//!
+//! 模板分兩種：放在模板資料夾裡的（首頁直接列出資料夾內容，不另記清單），
+//! 與資料夾外的外部模板（`profiles`，逐一記路徑）。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +13,10 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     #[serde(default = "one")]
     pub schema_version: u32,
+    /// 模板資料夾。`None` ＝ 還沒選過，首頁之前先出現「第一次使用」畫面。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles_folder: Option<String>,
+    /// 外部模板（資料夾外的模板檔）。
     #[serde(default)]
     pub profiles: Vec<ProfileRef>,
 }
@@ -36,7 +43,7 @@ pub fn load(file: &Path) -> Loaded {
         Err(_) => Loaded {
             settings: Settings {
                 schema_version: 1,
-                profiles: Vec::new(),
+                ..Settings::default()
             },
             was_broken: false,
         },
@@ -51,7 +58,7 @@ pub fn load(file: &Path) -> Loaded {
                 Loaded {
                     settings: Settings {
                         schema_version: 1,
-                        profiles: Vec::new(),
+                        ..Settings::default()
                     },
                     was_broken: true,
                 }

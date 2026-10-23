@@ -46,11 +46,17 @@ export interface ProfileCard {
   destination?: string;
   roots: string[];
   destinationConnected: boolean;
+  /** 模板資料夾外的模板（只記路徑）。 */
+  external: boolean;
   error?: Issue;
   last?: Report;
 }
 
 export interface Home {
+  /** null ＝ 第一次使用，還沒選模板資料夾。 */
+  profilesFolder?: string | null;
+  suggestedFolder: string;
+  folderIssue?: Issue | null;
   profiles: ProfileCard[];
   settingsWasBroken: boolean;
   running: boolean;
@@ -136,8 +142,11 @@ export const api = {
   ready: () => invoke<void>("app_ready"),
   home: () => invoke<Home>("home"),
   addProfile: (path: string) => invoke<void>("add_profile", { path }),
-  createProfile: (path: string, title: string, destination: string, roots: string[]) =>
-    invoke<void>("create_profile", { path, title, destination, roots }),
+  createProfile: (title: string, destination: string, roots: string[]) =>
+    invoke<string>("create_profile", { title, destination, roots }),
+  setProfilesFolder: (path: string, moveExisting: boolean) =>
+    invoke<Issue[]>("set_profiles_folder", { path, moveExisting }),
+  openProfilesFolder: () => invoke<void>("open_profiles_folder"),
   forgetProfile: (path: string) => invoke<void>("forget_profile", { path }),
   getProfile: (path: string) => invoke<ProfileForm>("get_profile", { path }),
   saveProfile: (path: string, form: ProfileForm) => invoke<void>("save_profile", { path, form }),

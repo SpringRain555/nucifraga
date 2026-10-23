@@ -32,7 +32,9 @@
 | 備份碟標記 | `Marker`（`destination.json`） | 認出「這是哪一顆備份碟」 | — |
 | 共用這顆碟 | `Confirmation::AdoptDestination` | 讓一份新模板使用一顆已經屬於別的模板的備份碟 | 綁定 |
 | 改用這顆碟 | `reset_destination`（清掉 `destinationId`） | 換了備份碟或磁碟代號之後，讓模板重新認碟 | 重設 |
-| 從清單移除 | `forget_profile` | 讓 app 不再顯示這份模板；**模板檔本身不刪** | 刪除模板 |
+| 模板資料夾 | `profilesFolder`、`library` | 新模板存放的資料夾；首頁列出它第一層的每一份模板 | 設定資料夾、工作區 |
+| 外部模板 | `ProfileRef`（`profiles[]`）、`external` | 放在模板資料夾以外、app 只記路徑的模板檔 | 連結、捷徑 |
+| 從清單移除 | `forget_profile` | 讓 app 不再顯示這份外部模板；**模板檔本身不刪** | 刪除模板 |
 | 路徑過長 | `PATH-001`／`PATH-002` | 超過檔案總管能處理的長度 | — |
 | 配對 | `Pairing`（M2） | 讓桌機與手機互相認得 | 綁定、連結 |
 

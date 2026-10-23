@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import { api, asIssue, type Home, type Issue } from "../api";
 import { t } from "../i18n/zh-TW";
 import { formatDate } from "../format";
@@ -10,7 +10,8 @@ import IssueList from "../components/IssueList.vue";
 const emit = defineEmits<{
   start: [path: string, title: string];
   edit: [path: string];
-  create: [path: string];
+  create: [folder: string];
+  folder: [current: string | null, suggested: string, inFolder: number];
   history: [path: string, title: string];
   versions: [path: string, title: string];
 }>();
@@ -40,9 +41,23 @@ async function addExisting() {
   }
 }
 
-async function createNew() {
-  const path = await save({ title: t("home.saveProfile"), filters: jsonFilter, defaultPath: "nucifraga-模板.json" });
-  if (path) emit("create", path);
+function createNew() {
+  if (home.value?.profilesFolder) emit("create", home.value.profilesFolder);
+  else changeFolder(); // 設定檔損毀重建之後會走到這裡：先選資料夾
+}
+
+function changeFolder() {
+  const h = home.value;
+  if (!h) return;
+  emit("folder", h.profilesFolder ?? null, h.suggestedFolder, h.profiles.filter((p) => !p.external).length);
+}
+
+async function openFolder() {
+  try {
+    await api.openProfilesFolder();
+  } catch (e) {
+    error.value = asIssue(e);
+  }
 }
 
 async function forget(path: string, title: string) {
@@ -78,6 +93,7 @@ defineExpose({ refresh });
   <section>
     <p v-if="home?.settingsWasBroken" class="notice">{{ t("app.settingsBroken") }}</p>
     <IssueList v-if="error" :issues="[error]" />
+    <IssueList v-if="home?.folderIssue" :issues="[home.folderIssue]" />
 
     <div v-if="home && home.profiles.length === 0" class="panel empty">
       <h2>{{ t("home.empty.title") }}</h2>
@@ -87,7 +103,10 @@ defineExpose({ refresh });
     <ul v-if="home" class="cards">
       <li v-for="c in home.profiles" :key="c.path" class="panel card">
         <div class="card__main">
-          <h2>{{ c.title }}</h2>
+          <h2>
+            {{ c.title }}
+            <span v-if="c.external" class="tag">{{ t("home.card.external") }}</span>
+          </h2>
           <template v-if="c.error">
             <p class="bad">{{ t("home.card.broken") }}</p>
             <IssueList :issues="[c.error]" />
@@ -116,8 +135,13 @@ defineExpose({ refresh });
               {{ t("home.card.versions") }}
             </button>
           </template>
-          <button v-else type="button" class="primary" @click="relocate(c.path)">{{ t("home.card.relocate") }}</button>
-          <button type="button" class="link" @click="forget(c.path, c.title)">{{ t("home.card.forget") }}</button>
+          <!-- 資料夾裡的模板沒有「重新指定」與「從清單移除」：首頁列的就是資料夾內容，要移除就把檔案搬走 -->
+          <button v-else-if="c.external" type="button" class="primary" @click="relocate(c.path)">
+            {{ t("home.card.relocate") }}
+          </button>
+          <button v-if="c.external" type="button" class="link" @click="forget(c.path, c.title)">
+            {{ t("home.card.forget") }}
+          </button>
         </div>
       </li>
     </ul>
@@ -125,6 +149,16 @@ defineExpose({ refresh });
     <div class="actions">
       <button type="button" class="primary" @click="addExisting">{{ t("home.addExisting") }}</button>
       <button type="button" @click="createNew">{{ t("home.createNew") }}</button>
+    </div>
+
+    <div v-if="home?.profilesFolder" class="folder">
+      <p class="muted">{{ t("home.folder", { path: home.profilesFolder }) }}</p>
+      <div class="actions">
+        <button type="button" class="link" @click="openFolder">{{ t("home.openFolder") }}</button>
+        <button type="button" class="link" :disabled="home.running" @click="changeFolder">
+          {{ t("home.changeFolder") }}
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -158,5 +192,26 @@ defineExpose({ refresh });
 }
 .empty {
   margin-bottom: 20px;
+}
+.tag {
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: var(--muted);
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  padding: 0 6px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.folder {
+  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+.folder p {
+  margin: 0;
+  word-break: break-all;
 }
 </style>

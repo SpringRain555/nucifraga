@@ -70,7 +70,8 @@ app 寫 `%LOCALAPPDATA%\<identifier>\ui-ready.txt`（內容是 PID；正式版�
 
 | 東西 | 位置 |
 |---|---|
-| app 設定 | `%APPDATA%\<identifier>\settings.json` |
+| app 設定 | `%APPDATA%\<identifier>\settings.json`（只記模板資料夾在哪、外部模板的路徑） |
+| 模板 | 使用者選的模板資料夾（預設 `文件\Nucifraga`）＋外部模板各自的位置 |
 | 就緒標記、啟動 log | `%LOCALAPPDATA%\<identifier>\`（`ui-ready.txt`、`launch-stderr.log`） |
 | 每次備份的紀錄 | 備份碟上的 `_reports\<時間>\`；備份碟找不到時寫到 `%LOCALAPPDATA%\<identifier>\reports\<時間>\` |
 | app 自己的執行 log | **M1 沒有做**：每次備份的報告已經涵蓋使用者需要的紀錄；app 本身出錯時用 `tools\Launch.ps1 -Foreground` 看。要做時再訂保留期限 |

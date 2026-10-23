@@ -6,7 +6,8 @@ import { t } from "../i18n/zh-TW";
 import { splitList } from "../format";
 import IssueList from "../components/IssueList.vue";
 
-// 同一個畫面給「編輯」與「建立新模板」用；建立時 `creating` 為 true，`path` 是使用者選的存檔位置。
+// 同一個畫面給「編輯」與「建立新模板」用。建立時 `path` 是模板資料夾：
+// 檔名由後端依名稱產生（library::new_path），建好之後才知道完整路徑。
 const props = defineProps<{ path: string; creating: boolean }>();
 const emit = defineEmits<{ done: [] }>();
 
@@ -34,8 +35,6 @@ onMounted(async () => {
     } catch (e) {
       error.value = asIssue(e);
     }
-  } else {
-    form.value.title = props.path.split(/[\\/]/).pop()?.replace(/\.json$/i, "") ?? "";
   }
   excludeDirs.value = form.value.excludeDirNames.join(", ");
   excludeGlobs.value = form.value.excludeGlobs.join(", ");
@@ -79,9 +78,9 @@ async function submit() {
   };
   try {
     if (props.creating) {
-      await api.createProfile(props.path, f.title, f.destination, f.roots.map((r) => r.path));
+      const created = await api.createProfile(f.title, f.destination, f.roots.map((r) => r.path));
       // 建立只寫最基本的欄位；其餘（別名、排除、進階）緊接著用一般的「儲存」寫進去。
-      await api.saveProfile(props.path, f);
+      await api.saveProfile(created, f);
       emit("done");
     } else {
       await api.saveProfile(props.path, f);
@@ -107,7 +106,7 @@ async function resetDestination() {
 <template>
   <form class="panel edit" @submit.prevent="submit">
     <h2>{{ creating ? t("edit.createTitle") : t("edit.title") }}</h2>
-    <p class="muted path">{{ path }}</p>
+    <p class="muted path">{{ creating ? t("edit.willSaveIn", { folder: path }) : path }}</p>
     <IssueList v-if="error" :issues="[error]" />
 
     <label class="field">

@@ -1,5 +1,5 @@
 //! 前端能呼叫的全部命令（ADR-0007）。每一個都只收必要的參數，路徑一律在這裡驗證：
-//! 能碰的只有「已經在設定裡的模板」與「那份模板的備份碟底下」。
+//! 能碰的只有「模板資料夾裡的或已經記住的外部模板」與「那份模板的備份碟底下」。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use nucifraga_core::error::Code;
 use nucifraga_core::fsops::{self, VersionStamp};
 use nucifraga_core::jsonedit::quote;
+use nucifraga_core::library;
 use nucifraga_core::profile::{self, PathPolicy, Profile, RootSpec};
 use nucifraga_core::report::{self, Issue};
 use nucifraga_core::run::LockDecision;
@@ -21,6 +22,8 @@ pub struct AppState {
     pub settings_file: PathBuf,
     pub settings: Mutex<Settings>,
     pub settings_was_broken: bool,
+    /// 第一次使用時建議的模板資料夾（`文件\Nucifraga`）。
+    pub suggested_folder: PathBuf,
     pub fallback_reports: PathBuf,
     pub run: Arc<Mutex<Option<Active>>>,
 }
@@ -31,16 +34,27 @@ fn internal(e: impl ToString) -> Issue {
     Issue::new(Code::Eng002, &[("detail", &e.to_string())])
 }
 
-/// 只接受設定裡已經有的模板 —— 前端不能拿任意路徑來讀寫。
+fn profiles_folder(state: &AppState) -> R<Option<PathBuf>> {
+    Ok(state
+        .settings
+        .lock()
+        .map_err(internal)?
+        .profiles_folder
+        .as_ref()
+        .map(PathBuf::from))
+}
+
+/// 只接受模板資料夾裡的、或已經記住的外部模板 —— 前端不能拿任意路徑來讀寫。
 fn known_profile(state: &AppState, path: &str) -> R<Profile> {
-    let known = state
+    let in_folder = profiles_folder(state)?.is_some_and(|f| library::contains(&f, Path::new(path)));
+    let external = state
         .settings
         .lock()
         .map_err(internal)?
         .profiles
         .iter()
         .any(|p| p.path == path);
-    if !known {
+    if !in_folder && !external {
         return Err(internal("這份模板不在清單裡"));
     }
     profile::load(Path::new(path))
@@ -59,11 +73,13 @@ pub struct ProfileCard {
     destination: Option<String>,
     roots: Vec<String>,
     destination_connected: bool,
+    /// 資料夾外的模板：可以「從清單移除」；資料夾裡的要移除就是把檔案搬走。
+    external: bool,
     error: Option<Issue>,
     last: Option<serde_json::Value>,
 }
 
-fn card(path: &str) -> ProfileCard {
+fn card(path: &str, external: bool) -> ProfileCard {
     match profile::load(Path::new(path)) {
         Ok(p) => {
             let connected = nucifraga_core::run::destination_available(&p.destination);
@@ -77,6 +93,7 @@ fn card(path: &str) -> ProfileCard {
                     .map(|r| r.path.display().to_string())
                     .collect(),
                 destination_connected: connected,
+                external,
                 error: None,
                 last: if connected {
                     report::list_reports(&p.destination, 1).into_iter().next()
@@ -94,6 +111,7 @@ fn card(path: &str) -> ProfileCard {
             destination: None,
             roots: Vec::new(),
             destination_connected: false,
+            external,
             error: Some(i),
             last: None,
         },
@@ -103,6 +121,11 @@ fn card(path: &str) -> ProfileCard {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Home {
+    /// `None` ＝ 第一次使用，還沒選模板資料夾。
+    profiles_folder: Option<String>,
+    suggested_folder: String,
+    /// 模板資料夾找不到（`APP-004`）；外部模板照樣列出。
+    folder_issue: Option<Issue>,
     profiles: Vec<ProfileCard>,
     settings_was_broken: bool,
     running: bool,
@@ -110,16 +133,33 @@ pub struct Home {
 
 #[tauri::command]
 pub fn home(state: State<'_, AppState>) -> R<Home> {
-    let paths: Vec<String> = state
-        .settings
-        .lock()
-        .map_err(internal)?
-        .profiles
-        .iter()
-        .map(|p| p.path.clone())
-        .collect();
+    let s = state.settings.lock().map_err(internal)?.clone();
+    let folder = s.profiles_folder.as_ref().map(PathBuf::from);
+    let mut profiles = Vec::new();
+    let mut folder_issue = None;
+    if let Some(f) = &folder {
+        match library::list(f) {
+            Ok(files) => {
+                profiles.extend(files.iter().map(|p| card(&p.display().to_string(), false)))
+            }
+            Err(i) => folder_issue = Some(i),
+        }
+    }
+    for p in &s.profiles {
+        // 外部模板後來被放進了模板資料夾：上面已經列過。
+        if folder
+            .as_ref()
+            .is_some_and(|f| library::contains(f, Path::new(&p.path)))
+        {
+            continue;
+        }
+        profiles.push(card(&p.path, true));
+    }
     Ok(Home {
-        profiles: paths.iter().map(|p| card(p)).collect(),
+        profiles_folder: s.profiles_folder.clone(),
+        suggested_folder: state.suggested_folder.display().to_string(),
+        folder_issue,
+        profiles,
         settings_was_broken: state.settings_was_broken,
         running: state.run.lock().map_err(internal)?.is_some(),
     })
@@ -146,22 +186,80 @@ fn remember(state: &AppState, path: &str) -> R<()> {
 }
 
 /// 「加入現有的模板檔」：讀不懂就不加入，直接回那個 CFG-*。
+/// 本來就在模板資料夾裡的不另記 —— 首頁已經會列出它。
 #[tauri::command]
 pub fn add_profile(state: State<'_, AppState>, path: String) -> R<()> {
     profile::load(Path::new(&path))?;
+    if profiles_folder(&state)?.is_some_and(|f| library::contains(&f, Path::new(&path))) {
+        return Ok(());
+    }
     remember(&state, &path)
 }
 
+/// 「建立新模板」：存進模板資料夾，檔名由名稱產生。回傳新模板的路徑。
 #[tauri::command]
 pub fn create_profile(
     state: State<'_, AppState>,
-    path: String,
     title: String,
     destination: String,
     roots: Vec<String>,
-) -> R<()> {
-    profile::create(Path::new(&path), &title, &destination, &roots)?;
-    remember(&state, &path)
+) -> R<String> {
+    let folder = profiles_folder(&state)?.ok_or_else(|| internal("還沒選模板資料夾"))?;
+    library::ensure(&folder)?;
+    let path = library::new_path(&folder, &title);
+    profile::create(&path, &title, &destination, &roots)?;
+    Ok(path.display().to_string())
+}
+
+/// 選定（或更換）模板資料夾。`move_existing`：把舊資料夾第一層的模板一起搬過去，
+/// 同名的不覆蓋、留在原處（`APP-005`）。回傳沒搬成的那幾則。
+#[tauri::command]
+pub fn set_profiles_folder(
+    state: State<'_, AppState>,
+    path: String,
+    move_existing: bool,
+) -> R<Vec<Issue>> {
+    if state.run.lock().map_err(internal)?.is_some() {
+        return Err(internal("備份進行中，不能更換模板資料夾"));
+    }
+    let new = PathBuf::from(&path);
+    library::ensure(&new)?;
+    let mut issues = Vec::new();
+    if move_existing
+        && let Some(old) = profiles_folder(&state)?
+        && !library::same_folder(&old, &new)
+    {
+        match library::move_all(&old, &new) {
+            Ok(m) => issues.extend(m.issues),
+            Err(i) => issues.push(i),
+        }
+    }
+    let mut s = state.settings.lock().map_err(internal)?;
+    s.profiles_folder = Some(path);
+    let snapshot = s.clone();
+    drop(s);
+    save_settings(&state, &snapshot)?;
+    Ok(issues)
+}
+
+#[tauri::command]
+pub fn open_profiles_folder(state: State<'_, AppState>) -> R<()> {
+    let folder = profiles_folder(&state)?.ok_or_else(|| internal("還沒選模板資料夾"))?;
+    if !folder.is_dir() {
+        return Err(Issue::new(
+            Code::App004,
+            &[("path", &folder.display().to_string())],
+        ));
+    }
+    explorer(&folder)
+}
+
+fn explorer(target: &Path) -> R<()> {
+    std::process::Command::new("explorer.exe")
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(internal)
 }
 
 /// 從清單移除（**不刪模板檔**）。
@@ -420,9 +518,5 @@ pub fn open_folder(
             &[("path", &target.display().to_string())],
         ));
     }
-    std::process::Command::new("explorer.exe")
-        .arg(&target)
-        .spawn()
-        .map(|_| ())
-        .map_err(internal)
+    explorer(&target)
 }

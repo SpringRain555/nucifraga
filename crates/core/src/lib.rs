@@ -12,6 +12,7 @@ pub mod engine;
 pub mod error;
 pub mod fsops;
 pub mod jsonedit;
+pub mod library;
 pub mod locks;
 pub mod longpath;
 pub mod plan;
