@@ -83,6 +83,8 @@ pub struct Options {
     pub delete_guard: DeleteGuard,
     pub always_skip_locked: Vec<String>,
     pub destination_id: Option<String>,
+    /// 排程（ADR-0010）。`None`＝不排程。
+    pub schedule: Option<crate::schedule::Schedule>,
 }
 
 impl Default for Options {
@@ -99,6 +101,7 @@ impl Default for Options {
             delete_guard: DeleteGuard::default(),
             always_skip_locked: Vec::new(),
             destination_id: None,
+            schedule: None,
         }
     }
 }
@@ -195,6 +198,11 @@ fn validate(file: &Path, raw: ProfileFile) -> Result<Profile, Issue> {
             "nucifraga.deleteGuard.maxRatio",
             "要在 0 到 1 之間",
         ));
+    }
+    if let Some(s) = &o.schedule
+        && let Err(reason) = s.validate()
+    {
+        return Err(invalid("nucifraga.schedule", &reason));
     }
     if raw.roots.is_empty() {
         return Err(invalid("roots", "至少要有一個來源資料夾"));

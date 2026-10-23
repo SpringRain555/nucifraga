@@ -1,6 +1,6 @@
 // 台灣慣用格式（ui-workflows.md 原則 5）：2026/10/23 下午 3:05、1.2 GB、12,345。
 
-import { t } from "./i18n/zh-TW";
+import { t, type MessageKey } from "./i18n/zh-TW";
 
 const dateFmt = new Intl.DateTimeFormat("zh-TW", {
   year: "numeric",
@@ -65,4 +65,24 @@ export function formatRemaining(seconds: number | null): string {
   const minutes = Math.ceil(seconds / 60);
   if (minutes < 60) return t("run.eta.minutes", { m: minutes });
   return t("run.eta.hours", { h: Math.floor(minutes / 60), m: minutes % 60 });
+}
+
+/** 星期的順序與名稱（排程）。 */
+export const WEEKDAYS: { key: string; label: MessageKey }[] = [
+  { key: "mon", label: "weekday.mon" },
+  { key: "tue", label: "weekday.tue" },
+  { key: "wed", label: "weekday.wed" },
+  { key: "thu", label: "weekday.thu" },
+  { key: "fri", label: "weekday.fri" },
+  { key: "sat", label: "weekday.sat" },
+  { key: "sun", label: "weekday.sun" },
+];
+
+/** 「每天 21:00」「每週一、三 21:00」。 */
+export function formatSchedule(s: { time: string; days: string[] }): string {
+  if (s.days.length === 0) return t("schedule.daily", { time: s.time });
+  const days = WEEKDAYS.filter((d) => s.days.includes(d.key))
+    .map((d) => t(d.label))
+    .join("、");
+  return t("schedule.weekly", { days, time: s.time });
 }

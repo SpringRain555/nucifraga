@@ -4,7 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
 import { t } from "./i18n/zh-TW";
 import { unsaved } from "./unsaved";
-import { initRunEvents } from "./run";
+import { initRunEvents, isActive } from "./run";
 import HomeView from "./views/HomeView.vue";
 import EditView from "./views/EditView.vue";
 import RunView from "./views/RunView.vue";
@@ -65,6 +65,15 @@ async function saveAndLeave() {
   else pending.value = null;
 }
 
+/** 排程開的 app（`--run <模板>`）：直接開始那份模板的備份（ADR-0010）。已經在備份就只把畫面帶過去。 */
+async function launch(path: string) {
+  if (isActive()) return;
+  const home = await api.home();
+  const card = home.profiles.find((p) => p.path.toLowerCase() === path.toLowerCase());
+  const title = card?.title ?? path.split(/[\\/]/).pop()?.replace(/\.json$/i, "") ?? path;
+  go({ name: "run", path: card?.path ?? path, title, attach: false });
+}
+
 async function openVersions(path: string, title: string) {
   const home = await api.home();
   const destination = home.profiles.find((p) => p.path === path)?.destination ?? "";
@@ -80,6 +89,9 @@ onMounted(async () => {
   screen.value = home.profilesFolder
     ? { name: "home" }
     : { name: "folder", current: null, suggested: home.suggestedFolder, inFolder: 0, back: "home" };
+  await api.onLaunchRequest((path) => void launch(path));
+  const requested = await api.takeLaunchRequest();
+  if (requested && home.profilesFolder) await launch(requested);
   // 按關閉時後端先攔下來：備份進行中問要不要取消；模板沒存問要不要存（app-lifecycle.md 第 5 題）。
   await api.onCloseRequested(async ({ running }) => {
     if (!running) {

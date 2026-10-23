@@ -55,11 +55,15 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
 fn main() {
     tauri::Builder::default()
         // 必須最先註冊：第二個行程在這裡就把參數交給第一個並結束，不會建任何視窗（§16 第 1、2 題）。
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
+            }
+            // 排程時間到、app 已經開著：把「開始備份這份模板」交給前端（ADR-0010）。
+            if let Some(path) = nucifraga_core::schedule::run_request(&args) {
+                let _ = app.emit("launch-request", path);
             }
         }))
         // 只用來讓使用者挑資料夾與檔案：它回傳路徑，不給前端讀寫權（ADR-0007）。
@@ -77,7 +81,12 @@ fn main() {
                 fallback_reports: local.join("reports"),
                 run: Arc::new(Mutex::new(None)),
                 unsaved: AtomicBool::new(false),
+                launch_request: Mutex::new(nucifraga_core::schedule::run_request(std::env::args())),
+                schedule_issues: Mutex::new(Vec::new()),
             });
+            // 工作排程器跟模板同步。要跑 schtasks 好幾次，放到背景，不擋視窗出來。
+            let handle = app.handle().clone();
+            std::thread::spawn(move || commands::reconcile_schedules(&handle.state::<AppState>()));
             Ok(())
         })
         // 備份進行中、或模板有未儲存的修改時按關閉：先攔下來問（app-lifecycle.md 第 5 題）。
@@ -106,6 +115,7 @@ fn main() {
             commands::set_unsaved,
             commands::quit_app,
             commands::set_background_mode,
+            commands::take_launch_request,
             commands::get_profile,
             commands::save_profile,
             commands::reset_destination,

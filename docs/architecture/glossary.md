@@ -36,6 +36,7 @@
 | 外部模板 | `ProfileRef`（`profiles[]`）、`external` | 放在模板資料夾以外、app 只記路徑的模板檔 | 連結、捷徑 |
 | 進行中 | `run`（`ui/src/run.ts`）、`fsops::run_in_progress` | 正在跑的那一次備份；首頁上方一塊 | 工作佇列 |
 | 接續備份 | `startRun`（同「開始備份」） | 上次沒完成時「開始備份」的名字：已傳完的檔案不重傳 | 續傳、恢復 |
+| 排程 | `nucifraga.schedule`、`schedule::Schedule` | 模板裡的「每天／每週幾 幾點」；由工作排程器在時間到時打開 app | 定時任務、cron |
 | 背景模式 | `backgroundMode`、`sys::enter_background_mode` | 備份把 CPU 與磁碟讓給前景程式 | 低優先權、節流 |
 | 預計剩下的時間 | `Eta` | 傳輸時估計還要多久 | ETA |
 | 設定 | `SettingsView` | 模板資料夾、外部模板、關於與診斷的畫面 | 偏好設定、選項 |

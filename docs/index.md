@@ -27,7 +27,7 @@
 | `environment/index.md` | ✅ | 怎麼建、驗、更新；環境變數 | 版本界線的理由 |
 | `environment/versions.md` | ✅ | 每一條版本下限的理由；**下限表是機器讀的** | 怎麼跑指令 |
 | `research/` | ✅ | 調查證據與判讀（market-scan、query-log、open-questions、sources） | 規格 |
-| `decisions/ADR-*.md` | ✅ 0001–0009 | 每一個「為什麼這樣做」 | 怎麼做 |
+| `decisions/ADR-*.md` | ✅ 0001–0010 | 每一個「為什麼這樣做」 | 怎麼做 |
 | `requirements/REQ-*.md` | ✅ 0001–0009 | 使用者要什麼、驗收條件、刻意不做 | 技術細節 |
 | `operations/release-checklist.md` | ✅ | 發佈前要過的檢查 | — |
 | `operations/maintainer-notes.md` | ✅ | 維護者的例行事 | — |

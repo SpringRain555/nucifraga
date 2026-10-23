@@ -20,6 +20,7 @@ pub mod profile;
 pub mod report;
 pub mod run;
 pub mod scan;
+pub mod schedule;
 mod sys;
 
 pub use sys::{VolumeInfo, volume_info};

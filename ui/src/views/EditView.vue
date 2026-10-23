@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, asIssue, type Issue, type ProfileForm } from "../api";
 import { t } from "../i18n/zh-TW";
-import { splitList } from "../format";
+import { splitList, WEEKDAYS } from "../format";
 import { unsaved } from "../unsaved";
 import IssueList from "../components/IssueList.vue";
 
@@ -21,7 +21,12 @@ const form = ref<ProfileForm>({
   blockLongPaths: false,
   verifyAfterCopy: true,
   alwaysSkipLocked: [],
+  schedule: null,
 });
+/** 排程的編輯狀態：關掉時保留時間與星期，再打開不必重填。 */
+const scheduleOn = ref(false);
+const scheduleTime = ref("21:00");
+const scheduleDays = ref<string[]>([]);
 const excludeDirs = ref("");
 const excludeGlobs = ref("");
 const alwaysSkip = ref("");
@@ -39,6 +44,9 @@ function current(): ProfileForm {
     excludeDirNames: splitList(excludeDirs.value),
     excludeGlobs: splitList(excludeGlobs.value),
     alwaysSkipLocked: splitList(alwaysSkip.value),
+    schedule: scheduleOn.value
+      ? { time: scheduleTime.value, days: WEEKDAYS.map((d) => d.key).filter((k) => scheduleDays.value.includes(k)) }
+      : null,
   };
 }
 
@@ -61,6 +69,11 @@ onMounted(async () => {
   excludeDirs.value = form.value.excludeDirNames.join(", ");
   excludeGlobs.value = form.value.excludeGlobs.join(", ");
   alwaysSkip.value = form.value.alwaysSkipLocked.join(", ");
+  if (form.value.schedule) {
+    scheduleOn.value = true;
+    scheduleTime.value = form.value.schedule.time;
+    scheduleDays.value = [...form.value.schedule.days];
+  }
   snapshot.value = JSON.stringify(current());
   unsaved.save = save;
 });
@@ -189,6 +202,24 @@ async function resetDestination() {
         </div>
       </section>
 
+      <section class="group">
+        <h3>{{ t("edit.section.schedule") }}</h3>
+        <label class="check"><input v-model="scheduleOn" type="checkbox" /> {{ t("edit.schedule.enable") }}</label>
+        <template v-if="scheduleOn">
+          <label class="field schedule-time">
+            <span>{{ t("edit.schedule.time") }}</span>
+            <input v-model="scheduleTime" type="time" required />
+          </label>
+          <fieldset class="field days">
+            <legend>{{ t("edit.schedule.days") }}</legend>
+            <label v-for="d in WEEKDAYS" :key="d.key" class="check">
+              <input v-model="scheduleDays" type="checkbox" :value="d.key" /> {{ t(d.label) }}
+            </label>
+          </fieldset>
+        </template>
+        <p class="muted hint">{{ t("edit.schedule.help") }}</p>
+      </section>
+
       <details class="group">
         <summary>{{ t("edit.advanced") }}</summary>
         <label class="check"><input v-model="form.blockLongPaths" type="checkbox" /> {{ t("edit.blockLongPaths") }}</label>
@@ -296,6 +327,21 @@ async function resetDestination() {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+.schedule-time input {
+  max-width: 160px;
+}
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.days legend {
+  width: 100%;
+  margin-bottom: 4px;
 }
 .savebar {
   position: sticky;

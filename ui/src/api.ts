@@ -40,6 +40,12 @@ export interface Report {
   issues: Issue[];
 }
 
+/** 模板裡的 `nucifraga.schedule`（ADR-0010）。`days` 空的＝每天。 */
+export interface Schedule {
+  time: string;
+  days: string[];
+}
+
 export interface ProfileCard {
   path: string;
   title: string;
@@ -52,6 +58,7 @@ export interface ProfileCard {
   interrupted: boolean;
   /** 模板資料夾外的模板（只記路徑）。 */
   external: boolean;
+  schedule?: Schedule | null;
   error?: Issue;
   last?: Report;
 }
@@ -61,6 +68,8 @@ export interface Home {
   profilesFolder?: string | null;
   suggestedFolder: string;
   folderIssue?: Issue | null;
+  /** 啟動時同步工作排程器遇到的問題（APP-007）。 */
+  scheduleIssues: Issue[];
   profiles: ProfileCard[];
   settingsWasBroken: boolean;
   running: boolean;
@@ -80,6 +89,7 @@ export interface ProfileForm {
   blockLongPaths: boolean;
   verifyAfterCopy: boolean;
   alwaysSkipLocked: string[];
+  schedule?: Schedule | null;
 }
 
 export type RunState =
@@ -166,6 +176,9 @@ export const api = {
   setUnsaved: (unsaved: boolean) => invoke<void>("set_unsaved", { unsaved }),
   quitApp: () => invoke<void>("quit_app"),
   setBackgroundMode: (on: boolean) => invoke<void>("set_background_mode", { on }),
+  takeLaunchRequest: () => invoke<string | null>("take_launch_request"),
+  onLaunchRequest: (f: (path: string) => void): Promise<UnlistenFn> =>
+    listen<string>("launch-request", (e) => f(e.payload)),
   forgetProfile: (path: string) => invoke<void>("forget_profile", { path }),
   getProfile: (path: string) => invoke<ProfileForm>("get_profile", { path }),
   saveProfile: (path: string, form: ProfileForm) => invoke<void>("save_profile", { path, form }),

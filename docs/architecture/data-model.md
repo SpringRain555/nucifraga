@@ -44,6 +44,7 @@
     "versioning": { "retentionDays": null },     // null＝永久保留，只有使用者手動刪
     "deleteGuard": { "minCount": 50, "maxRatio": 0.05 },
     "alwaysSkipLocked": ["**/*.ost", "**/pagefile.sys"],
+    "schedule": { "time": "21:00", "days": ["mon", "thu"] },   // 排程（ADR-0010）；null＝不排程，days 空的＝每天
     "destinationId": null             // 第一次執行後寫入；之後用來認目的地是不是同一顆碟
   }
 }

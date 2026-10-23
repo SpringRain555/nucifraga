@@ -35,6 +35,10 @@ flowchart TD
 **把既有的視窗叫到前面**，第二個行程以 0 結束。用 `tauri-plugin-single-instance`：
 第二個行程把參數交給第一個，第一個 `unminimize` → `show` → `set_focus`。
 
+參數裡有 `--run "<模板>"`（排程時間到，ADR-0010）時，第一個行程另外送 `launch-request` 給前端，
+前端開始那份模板的備份；已經在備份就只把畫面帶過去。第一次啟動就帶著 `--run` 的，前端畫好第一個畫面後用
+`take_launch_request` 拿走它。
+
 ### 2.「已經在跑」的判斷放哪？
 
 **在 app 裡**（plugin 在 `main.rs` 的 builder 最前面註冊，比任何視窗都早）。啟動器不判斷，

@@ -51,7 +51,7 @@ codes! {
     Phn001 => "PHN-001", Phn002 => "PHN-002", Phn003 => "PHN-003", Phn004 => "PHN-004",
     Phn005 => "PHN-005",
     App001 => "APP-001", App002 => "APP-002", App003 => "APP-003", App004 => "APP-004",
-    App005 => "APP-005", App006 => "APP-006",
+    App005 => "APP-005", App006 => "APP-006", App007 => "APP-007",
 }
 
 impl fmt::Display for Code {

@@ -3,7 +3,7 @@ import { onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, asIssue, type Home, type Issue } from "../api";
 import { t } from "../i18n/zh-TW";
-import { formatDate, formatNumber, formatRemaining } from "../format";
+import { formatDate, formatNumber, formatRemaining, formatSchedule } from "../format";
 import { run, isActive, isWaiting, stepOf } from "../run";
 import OutcomeBadge from "../components/OutcomeBadge.vue";
 import IssueList from "../components/IssueList.vue";
@@ -74,6 +74,7 @@ defineExpose({ refresh });
     <p v-if="home?.settingsWasBroken" class="notice">{{ t("app.settingsBroken") }}</p>
     <IssueList v-if="error" :issues="[error]" />
     <IssueList v-if="home?.folderIssue" :issues="[home.folderIssue]" />
+    <IssueList v-if="home?.scheduleIssues.length" :issues="home.scheduleIssues" />
 
     <!-- 進行中：離開執行中畫面之後，備份在背景繼續跑；從這裡回去（ui-workflows「進行中」） -->
     <section v-if="isActive()" class="panel active" :class="{ 'active--waiting': isWaiting() }">
@@ -192,6 +193,11 @@ defineExpose({ refresh });
               </template>
               <span v-else-if="!c.destinationConnected" class="muted">{{ t("home.card.unknownWhileDisconnected") }}</span>
               <span v-else class="muted">{{ t("home.card.never") }}</span>
+            </dd>
+            <dt>{{ t("home.card.schedule") }}</dt>
+            <dd>
+              <template v-if="c.schedule">{{ formatSchedule(c.schedule) }}</template>
+              <span v-else class="muted">{{ t("home.card.noSchedule") }}</span>
             </dd>
             <dt>{{ t("home.card.file") }}</dt>
             <dd class="path muted">{{ c.path }}</dd>

@@ -12,6 +12,7 @@ use nucifraga_core::library;
 use nucifraga_core::profile::{self, PathPolicy, Profile, RootSpec};
 use nucifraga_core::report::{self, Issue};
 use nucifraga_core::run::LockDecision;
+use nucifraga_core::schedule::{self, Schedule};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
@@ -28,6 +29,10 @@ pub struct AppState {
     pub run: Arc<Mutex<Option<Active>>>,
     /// 模板編輯畫面有沒有未儲存的修改：有的話關視窗前先問（ui-workflows「模板編輯」）。
     pub unsaved: AtomicBool,
+    /// 這次啟動帶的 `--run <模板>`（排程開的）；前端畫好第一個畫面後拿走。
+    pub launch_request: Mutex<Option<String>>,
+    /// 啟動時同步工作排程器遇到的問題（`APP-007`），顯示在首頁。
+    pub schedule_issues: Mutex<Vec<Issue>>,
 }
 
 type R<T> = Result<T, Issue>;
@@ -81,6 +86,7 @@ pub struct ProfileCard {
     interrupted: bool,
     /// 資料夾外的模板：可以「從清單移除」；資料夾裡的要移除就是把檔案搬走。
     external: bool,
+    schedule: Option<Schedule>,
     error: Option<Issue>,
     last: Option<serde_json::Value>,
 }
@@ -105,6 +111,7 @@ fn card(path: &str, external: bool) -> ProfileCard {
                 busy,
                 interrupted,
                 external,
+                schedule: p.raw.nucifraga.schedule.clone(),
                 error: None,
                 last: if connected {
                     report::list_reports(&p.destination, 1).into_iter().next()
@@ -125,6 +132,7 @@ fn card(path: &str, external: bool) -> ProfileCard {
             busy: false,
             interrupted: false,
             external,
+            schedule: None,
             error: Some(i),
             last: None,
         },
@@ -139,6 +147,7 @@ pub struct Home {
     suggested_folder: String,
     /// 模板資料夾找不到（`APP-004`）；外部模板照樣列出。
     folder_issue: Option<Issue>,
+    schedule_issues: Vec<Issue>,
     profiles: Vec<ProfileCard>,
     settings_was_broken: bool,
     running: bool,
@@ -172,6 +181,7 @@ pub fn home(state: State<'_, AppState>) -> R<Home> {
         profiles_folder: s.profiles_folder.clone(),
         suggested_folder: state.suggested_folder.display().to_string(),
         folder_issue,
+        schedule_issues: state.schedule_issues.lock().map_err(internal)?.clone(),
         profiles,
         settings_was_broken: state.settings_was_broken,
         running: state.run.lock().map_err(internal)?.is_some(),
@@ -252,6 +262,8 @@ pub fn set_profiles_folder(
     let snapshot = s.clone();
     drop(s);
     save_settings(&state, &snapshot)?;
+    // 模板的路徑變了，排程的工作也要跟著換（名稱由路徑而來）。
+    reconcile_schedules(&state);
     Ok(issues)
 }
 
@@ -348,6 +360,8 @@ fn explorer(target: &Path) -> R<()> {
 /// 從清單移除（**不刪模板檔**）。
 #[tauri::command]
 pub fn forget_profile(state: State<'_, AppState>, path: String) -> R<()> {
+    // 不再顯示的模板，它的排程也不該再跑。
+    schedule::remove(Path::new(&path))?;
     let mut s = state.settings.lock().map_err(internal)?;
     s.profiles.retain(|p| p.path != path);
     let snapshot = s.clone();
@@ -373,6 +387,7 @@ pub struct ProfileForm {
     block_long_paths: bool,
     verify_after_copy: bool,
     always_skip_locked: Vec<String>,
+    schedule: Option<Schedule>,
 }
 
 #[tauri::command]
@@ -395,6 +410,7 @@ pub fn get_profile(state: State<'_, AppState>, path: String) -> R<ProfileForm> {
         block_long_paths: raw.nucifraga.path_policy == PathPolicy::Block,
         verify_after_copy: raw.nucifraga.verify_after_copy,
         always_skip_locked: raw.nucifraga.always_skip_locked.clone(),
+        schedule: raw.nucifraga.schedule.clone(),
     })
 }
 
@@ -468,10 +484,84 @@ pub fn save_profile(state: State<'_, AppState>, path: String, form: ProfileForm)
             json(&form.always_skip_locked),
         ));
     }
+    let schedule_changed = form.schedule != o.schedule;
+    if schedule_changed {
+        edits.push((vec!["nucifraga", "schedule"], json(&form.schedule)));
+    }
     if edits.is_empty() {
         return Ok(());
     }
-    profile::save_edits(Path::new(&path), &edits).map(|_| ())
+    profile::save_edits(Path::new(&path), &edits)?;
+    // 模板先存好；工作排程器沒同步成功時回 APP-007，排程設定照樣在模板裡，下次啟動會再試。
+    if schedule_changed || form.title != p.title {
+        apply_schedule(Path::new(&path), &form.title, form.schedule.as_ref())?;
+    }
+    Ok(())
+}
+
+fn today() -> String {
+    time::OffsetDateTime::now_local()
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+        .date()
+        .to_string()
+}
+
+fn apply_schedule(profile_file: &Path, title: &str, s: Option<&Schedule>) -> R<()> {
+    match s {
+        Some(s) => {
+            let exe = std::env::current_exe().map_err(internal)?;
+            let w = schedule::Wanted {
+                profile_file,
+                title,
+                schedule: s,
+            };
+            schedule::install(&w, &exe, &today())
+        }
+        None => schedule::remove(profile_file),
+    }
+}
+
+/// 讓工作排程器跟目前看得到的模板一致（啟動時、換模板資料夾後）。
+pub fn reconcile_schedules(state: &AppState) {
+    let s = match state.settings.lock() {
+        Ok(s) => s.clone(),
+        Err(_) => return,
+    };
+    let mut paths: Vec<PathBuf> = s
+        .profiles_folder
+        .as_ref()
+        .and_then(|f| library::list(Path::new(f)).ok())
+        .unwrap_or_default();
+    for p in &s.profiles {
+        let pb = PathBuf::from(&p.path);
+        if !paths.iter().any(|q| library::same_folder(q, &pb)) {
+            paths.push(pb);
+        }
+    }
+    let loaded: Vec<Profile> = paths.iter().filter_map(|p| profile::load(p).ok()).collect();
+    let wanted: Vec<schedule::Wanted> = loaded
+        .iter()
+        .filter_map(|p| {
+            p.raw.nucifraga.schedule.as_ref().map(|s| schedule::Wanted {
+                profile_file: &p.file,
+                title: &p.title,
+                schedule: s,
+            })
+        })
+        .collect();
+    let issues = match std::env::current_exe() {
+        Ok(exe) => schedule::reconcile(&wanted, &exe, &today()),
+        Err(e) => vec![internal(e)],
+    };
+    if let Ok(mut g) = state.schedule_issues.lock() {
+        *g = issues;
+    }
+}
+
+/// 排程開的 app（`--run <模板>`）：前端畫好第一個畫面後拿走，之後就沒有了。
+#[tauri::command]
+pub fn take_launch_request(state: State<'_, AppState>) -> R<Option<String>> {
+    Ok(state.launch_request.lock().map_err(internal)?.take())
 }
 
 /// DST-003 的「改用這顆碟」：清掉模板記住的備份碟，下次執行時重新認碟。
