@@ -85,6 +85,7 @@ export interface ProfileForm {
 export type RunState =
   | "idle"
   | "preflight"
+  | "awaitingDestination"
   | "scanning"
   | "planning"
   | "awaitingConfirmation"
@@ -126,7 +127,8 @@ export type RunEvent =
   | { kind: "progress"; data: Progress }
   | { kind: "issue"; data: Issue }
   | { kind: "confirmation"; data: Confirmation }
-  | { kind: "locked"; data: LockGroup[] };
+  | { kind: "locked"; data: LockGroup[] }
+  | { kind: "destinationMissing"; data: string };
 
 export interface Finished {
   report: Report;
@@ -171,6 +173,7 @@ export const api = {
   startRun: (path: string) => invoke<void>("start_run", { path }),
   answerConfirmation: (yes: boolean) => invoke<void>("answer_confirmation", { yes }),
   answerLocks: (answer: LockAnswer) => invoke<void>("answer_locks", { answer }),
+  answerDestination: (retry: boolean) => invoke<void>("answer_destination", { retry }),
   cancelRun: (thenQuit = false) => invoke<void>("cancel_run", { thenQuit }),
   history: (path: string) => invoke<Report[]>("history", { path }),
   versions: (path: string) => invoke<VersionStamp[]>("versions", { path }),

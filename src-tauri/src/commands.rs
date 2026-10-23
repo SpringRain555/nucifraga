@@ -506,6 +506,12 @@ pub fn answer_confirmation(state: State<'_, AppState>, yes: bool) -> R<()> {
     send(&state, Answer::Confirm(yes))
 }
 
+/// 備份碟沒接上時的回答：`retry` ＝「已接上，繼續」。
+#[tauri::command]
+pub fn answer_destination(state: State<'_, AppState>, retry: bool) -> R<()> {
+    send(&state, Answer::Destination(retry))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LockAnswer {
@@ -537,6 +543,7 @@ pub fn cancel_run(state: State<'_, AppState>, then_quit: bool) -> R<()> {
         }
         let _ = a.answers.send(Answer::Confirm(false));
         let _ = a.answers.send(Answer::Lock(LockDecision::Cancel));
+        let _ = a.answers.send(Answer::Destination(false));
     }
     Ok(())
 }

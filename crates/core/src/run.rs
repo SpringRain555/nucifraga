@@ -29,6 +29,8 @@ use crate::sys;
 pub enum RunState {
     Idle,
     Preflight,
+    /// 備份碟沒接上，等使用者接上後按「已接上，繼續」（只在有人可以問時）。
+    AwaitingDestination,
     Scanning,
     Planning,
     AwaitingConfirmation,
@@ -60,6 +62,9 @@ pub fn allowed(from: RunState, to: RunState) -> bool {
     matches!(
         (from, to),
         (Idle, Preflight)
+            | (Preflight, AwaitingDestination)
+            | (AwaitingDestination, Preflight)
+            | (AwaitingDestination, Finalizing)
             | (Preflight, Scanning)
             | (Preflight, AwaitingConfirmation)
             | (Preflight, Finalizing)
@@ -113,6 +118,14 @@ pub enum LockDecision {
 pub trait Decider: Sync {
     fn confirm(&self, c: &Confirmation) -> bool;
     fn locked(&self, groups: &[LockGroup]) -> LockDecision;
+    /// 有沒有人可以等「接上備份碟」。沒有（CLI）就直接報 `DST-001`，不進 `AwaitingDestination`。
+    fn can_wait_for_destination(&self) -> bool {
+        false
+    }
+    /// 備份碟沒接上：`true` ＝ 使用者說接好了，再偵測一次；`false` ＝ 取消。
+    fn destination_missing(&self, _path: &str) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -133,6 +146,8 @@ pub enum Event {
     Issue(Issue),
     Confirmation(Confirmation),
     Locked(Vec<LockGroup>),
+    /// 備份碟沒接上，等使用者（帶著目的地路徑）。
+    DestinationMissing(String),
 }
 
 pub struct RunOptions {
@@ -341,8 +356,19 @@ impl<'a> Runner<'a> {
         let dest = profile.destination.clone();
         let dest_text = dest.display().to_string();
 
-        if !destination_available(&dest) {
-            return Err(Some(Issue::new(Code::Dst001, &[("path", &dest_text)])));
+        // 備份碟沒接上：有人可以問就等（「已接上，繼續」再偵測一次），沒有就是 DST-001。
+        while !destination_available(&dest) {
+            if !self.decider.can_wait_for_destination() {
+                return Err(Some(Issue::new(Code::Dst001, &[("path", &dest_text)])));
+            }
+            self.set(RunState::AwaitingDestination);
+            (self.sink)(Event::DestinationMissing(dest_text.clone()));
+            let retry = self.decider.destination_missing(&dest_text);
+            if !retry || self.cancel_requested() {
+                self.cancelled = true;
+                return Err(None);
+            }
+            self.set(RunState::Preflight);
         }
         // 插錯碟要在**寫任何東西之前**擋下：否則別人的碟上會多出一個 .nucifraga 資料夾。
         if let Some(want) = &profile.destination_id
@@ -964,6 +990,7 @@ mod tests {
         let all = [
             Idle,
             Preflight,
+            AwaitingDestination,
             Scanning,
             Planning,
             AwaitingConfirmation,
@@ -987,6 +1014,7 @@ mod tests {
     fn every_non_terminal_state_can_reach_finalizing() {
         for s in [
             Preflight,
+            AwaitingDestination,
             Scanning,
             Planning,
             AwaitingConfirmation,

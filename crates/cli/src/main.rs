@@ -75,6 +75,7 @@ fn state_label(s: RunState) -> &'static str {
     match s {
         RunState::Idle => "待命",
         RunState::Preflight => "預檢",
+        RunState::AwaitingDestination => "等待備份碟",
         RunState::Scanning => "掃描",
         RunState::Planning => "比對",
         RunState::AwaitingConfirmation => "需確認",

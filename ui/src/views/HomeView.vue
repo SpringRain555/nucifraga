@@ -80,7 +80,8 @@ defineExpose({ refresh });
       <h2>{{ t("home.active.title") }}</h2>
       <div class="active__body">
         <div>
-          <p v-if="isWaiting()" class="warn">⚠ {{ t("home.active.waiting", { title: run.title }) }}</p>
+          <p v-if="run.missingDestination" class="warn">⚠ {{ t("home.active.waitingDest", { title: run.title }) }}</p>
+          <p v-else-if="isWaiting()" class="warn">⚠ {{ t("home.active.waiting", { title: run.title }) }}</p>
           <p v-else>
             {{ t("home.active.running", { title: run.title, step: stepOf(run.state) ? t(stepOf(run.state)!) : "" }) }}
           </p>

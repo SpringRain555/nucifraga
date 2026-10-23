@@ -11,6 +11,9 @@
 stateDiagram-v2
   [*] --> Idle
   Idle --> Preflight: 使用者按「開始備份」／CLI 執行
+  Preflight --> AwaitingDestination: 備份碟沒接上（有人可以問時）
+  AwaitingDestination --> Preflight: 使用者按「已接上，繼續」，再偵測一次
+  AwaitingDestination --> Finalizing: 使用者取消（cancelled）
   Preflight --> Scanning: 沒有致命問題
   Preflight --> Finalizing: 致命問題（DST-001/003/007、CFG-*）
   Preflight --> AwaitingConfirmation: 這顆碟已經屬於別的模板
@@ -45,6 +48,7 @@ stateDiagram-v2
 |---|---|---|
 | `Idle` | 什麼都沒做 | — |
 | `Preflight` | 讀模板、驗模板（`CFG-*`）、目的地在不在、標記檔對不對、拿目的地的執行鎖、開目錄、清掉上次中斷留下的暫存檔 | ✅ |
+| `AwaitingDestination` | 備份碟沒接上：畫面寫「備份碟未接上：{path}」，等使用者接上後按「已接上，繼續」（再偵測一次，還是沒有就再問）或「取消這次備份」。排程開的 app 也走這裡（使用者 2026-10-24 決定：在畫面上提醒，不用 Windows 通知） | ✅（＝取消） |
 | `Scanning` | 走訪每個來源，只做 `stat`；套用排除規則；記下 reparse point、雲端佔位檔 | ✅ |
 | `Planning` | 對照目錄算出計畫：新增、更新、搬到舊版本、不變；算出需要的空間與路徑預算 | ✅ |
 | `AwaitingConfirmation` | 等使用者表態，兩種情況：「這次會把 N 個檔案搬到舊版本」（從比對來），或「這顆碟已經是別的模板的備份碟，要共用嗎」（從預檢來，同意後回到預檢） | ✅（＝拒絕） |
@@ -74,6 +78,7 @@ stateDiagram-v2
 | `AwaitingConfirmation`（數量異常） | 拒絕 → `Cancelled`，報 `ENG-004` | `--allow-mass-versioning` |
 | `AwaitingConfirmation`（共用備份碟） | 拒絕 → `Cancelled` | `--adopt-destination` |
 | `AwaitingLockDecision` | 略過那些檔案 → 繼續，報 `SRC-003` | `--cancel-on-locked` |
+| `AwaitingDestination` | **不進這個狀態**：預檢直接報 `DST-001` → `Failed` | — |
 
 ### 程式裡的對應
 

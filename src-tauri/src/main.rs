@@ -112,6 +112,7 @@ fn main() {
             commands::start_run,
             commands::answer_confirmation,
             commands::answer_locks,
+            commands::answer_destination,
             commands::cancel_run,
             commands::history,
             commands::versions,

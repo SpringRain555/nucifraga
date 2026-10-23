@@ -19,7 +19,7 @@ import type { MessageKey } from "./i18n/zh-TW";
 
 /** 執行中畫面的步驟條；首頁的「進行中」也用它說現在在哪一步。 */
 export const STEPS: { states: RunState[]; label: MessageKey }[] = [
-  { states: ["preflight", "awaitingConfirmation"], label: "run.step.preflight" },
+  { states: ["preflight", "awaitingDestination", "awaitingConfirmation"], label: "run.step.preflight" },
   { states: ["scanning"], label: "run.step.scanning" },
   { states: ["planning"], label: "run.step.planning" },
   { states: ["checkingLocks", "awaitingLockDecision"], label: "run.step.checkingLocks" },
@@ -41,6 +41,8 @@ export const run = reactive({
   eta: null as number | null,
   confirmation: null as Confirmation | null,
   locked: null as LockGroup[] | null,
+  /** 備份碟沒接上時的目的地路徑（等使用者接上）。 */
+  missingDestination: null as string | null,
   finished: null as Finished | null,
   startError: null as Issue | null,
   cancelling: false,
@@ -53,7 +55,7 @@ export function isActive(): boolean {
 
 /** 停下來等使用者回答。 */
 export function isWaiting(): boolean {
-  return run.confirmation !== null || run.locked !== null;
+  return run.confirmation !== null || run.locked !== null || run.missingDestination !== null;
 }
 
 const eta = new Eta();
@@ -65,6 +67,7 @@ export async function initRunEvents() {
         run.state = e.data;
         if (e.data !== "awaitingConfirmation") run.confirmation = null;
         if (e.data !== "awaitingLockDecision") run.locked = null;
+        if (e.data !== "awaitingDestination") run.missingDestination = null;
         if (e.data !== "transferring") {
           eta.reset();
           run.eta = null;
@@ -86,6 +89,9 @@ export async function initRunEvents() {
       case "locked":
         run.locked = e.data;
         break;
+      case "destinationMissing":
+        run.missingDestination = e.data;
+        break;
       case "issue":
         break; // 結果畫面一次列出全部，不在進行中逐則跳出
     }
@@ -105,6 +111,7 @@ export async function startRun(path: string, title: string) {
     eta: null,
     confirmation: null,
     locked: null,
+    missingDestination: null,
     finished: null,
     startError: null,
     cancelling: false,

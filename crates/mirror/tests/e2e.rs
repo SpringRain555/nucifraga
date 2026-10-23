@@ -504,3 +504,88 @@ fn run_in_progress_sees_the_run_lock() {
     held.unlock().unwrap();
     assert!(!nucifraga_core::fsops::run_in_progress(&fx.dest));
 }
+
+/// 有人可以問的時候，備份碟沒接上不是失敗：停在 AwaitingDestination 等「已接上，繼續」。
+/// 這裡第一次回答「繼續」（碟還是不在 → 再問一次），第二次回答取消 → 已取消，不是失敗。
+#[test]
+fn missing_destination_waits_for_the_user_when_someone_can_answer() {
+    struct WaitTwice {
+        asked: AtomicUsize,
+    }
+    impl Decider for WaitTwice {
+        fn confirm(&self, _: &Confirmation) -> bool {
+            true
+        }
+        fn locked(&self, _: &[LockGroup]) -> LockDecision {
+            LockDecision::Cancel
+        }
+        fn can_wait_for_destination(&self) -> bool {
+            true
+        }
+        fn destination_missing(&self, _: &str) -> bool {
+            self.asked.fetch_add(1, Ordering::SeqCst) == 0
+        }
+    }
+    // 找一個這台電腦沒有的磁碟代號
+    let letter = ('G'..='Z')
+        .find(|c| !Path::new(&format!("{c}:\\")).exists())
+        .expect("至少有一個沒用到的磁碟代號");
+    let fx = Fx::new();
+    fx.write("a.txt", "a");
+    let profile = fx.profile.with_file_name("missing-dest.json");
+    nucifraga_core::profile::create(
+        &profile,
+        "碟不在",
+        &format!(r"{letter}:\nucifraga"),
+        &[fx.src.display().to_string()],
+    )
+    .unwrap();
+
+    let states = std::sync::Mutex::new(Vec::new());
+    let sink = |e: nucifraga_core::run::Event| {
+        if let nucifraga_core::run::Event::State(s) = e {
+            states.lock().unwrap().push(s);
+        }
+    };
+    let decider = WaitTwice {
+        asked: AtomicUsize::new(0),
+    };
+    let r = Runner::new(
+        &Mirror,
+        &decider,
+        &sink,
+        Arc::new(AtomicBool::new(false)),
+        RunOptions {
+            fallback_report_dir: Some(fx.fallback.clone()),
+            background: false,
+        },
+    )
+    .run(&profile);
+
+    assert_eq!(decider.asked.load(Ordering::SeqCst), 2);
+    assert_eq!(r.outcome, Outcome::Cancelled, "{:?}", r.issues);
+    let waits = states
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|s| **s == nucifraga_core::run::RunState::AwaitingDestination)
+        .count();
+    assert_eq!(waits, 2);
+
+    // 沒有人可以問（CLI）：照舊是 DST-001 失敗
+    let cli = fx.run(&YES);
+    assert_eq!(cli.outcome, Outcome::Completed, "fx 自己的模板不受影響");
+    let r2 = Runner::new(
+        &Mirror,
+        &YES,
+        &|_| {},
+        Arc::new(AtomicBool::new(false)),
+        RunOptions {
+            fallback_report_dir: Some(fx.fallback.clone()),
+            background: false,
+        },
+    )
+    .run(&profile);
+    assert_eq!(r2.outcome, Outcome::Failed);
+    assert_eq!(codes(&r2), [Code::Dst001]);
+}

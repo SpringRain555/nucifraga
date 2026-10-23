@@ -14,6 +14,8 @@ use tauri::{AppHandle, Emitter};
 pub enum Answer {
     Confirm(bool),
     Lock(LockDecision),
+    /// 「已接上，繼續」（true）或取消（false）。
+    Destination(bool),
 }
 
 /// 正在跑的那一次。同一時間只有一次（備份碟上還有作業系統層的執行鎖）。
@@ -36,12 +38,28 @@ impl UiDecider {
 }
 
 impl Decider for UiDecider {
+    fn can_wait_for_destination(&self) -> bool {
+        true
+    }
+
+    fn destination_missing(&self, _: &str) -> bool {
+        loop {
+            match self.wait() {
+                Some(Answer::Destination(retry)) => {
+                    return retry && !self.cancel.load(Ordering::Relaxed);
+                }
+                Some(_) => continue,
+                None => return false,
+            }
+        }
+    }
+
     fn confirm(&self, _: &Confirmation) -> bool {
         // 事件已經由 Runner 送給前端；這裡等回答。視窗關掉（通道斷了）或取消就當成「不要」。
         loop {
             match self.wait() {
                 Some(Answer::Confirm(yes)) => return yes && !self.cancel.load(Ordering::Relaxed),
-                Some(Answer::Lock(_)) => continue,
+                Some(_) => continue,
                 None => return false,
             }
         }
@@ -51,7 +69,7 @@ impl Decider for UiDecider {
         loop {
             match self.wait() {
                 Some(Answer::Lock(d)) => return d,
-                Some(Answer::Confirm(_)) => continue,
+                Some(_) => continue,
                 None => return LockDecision::Cancel,
             }
         }

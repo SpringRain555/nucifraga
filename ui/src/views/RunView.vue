@@ -25,6 +25,11 @@ async function confirm(yes: boolean) {
   await api.answerConfirmation(yes);
 }
 
+async function answerDestination(retry: boolean) {
+  run.missingDestination = null;
+  await api.answerDestination(retry);
+}
+
 async function answerLocks(a: LockAnswer) {
   run.locked = null;
   await api.answerLocks(a === "skip" && remember.value ? "skipAndRemember" : a);
@@ -93,6 +98,16 @@ const stampOfReport = computed(() => run.finished?.report.runId);
         </p>
       </div>
 
+      <!-- 備份碟沒接上（state-machines.md §1 AwaitingDestination） -->
+      <div v-if="run.missingDestination" class="ask" role="alertdialog">
+        <h3>⚠ {{ t("run.dest.title") }}</h3>
+        <p>{{ t("run.dest.body", { path: run.missingDestination }) }}</p>
+        <div class="actions">
+          <button type="button" @click="answerDestination(false)">{{ t("run.decline") }}</button>
+          <button type="button" class="primary" @click="answerDestination(true)">{{ t("run.dest.retry") }}</button>
+        </div>
+      </div>
+
       <!-- 需確認（state-machines.md §1） -->
       <div v-if="run.confirmation?.kind === 'massVersioning'" class="ask" role="alertdialog">
         <h3>⚠ {{ t("run.mass.title") }}</h3>
@@ -142,7 +157,7 @@ const stampOfReport = computed(() => run.finished?.report.runId);
       </div>
 
       <!-- 停下來問的時候，問題本身已經有「取消這次備份」，這裡不再放第二個 -->
-      <div v-if="!run.confirmation && !run.locked" class="actions">
+      <div v-if="!run.confirmation && !run.locked && !run.missingDestination" class="actions">
         <button type="button" :disabled="run.cancelling" @click="cancelRun">
           {{ run.cancelling ? t("run.cancelPending") : t("run.cancel") }}
         </button>
