@@ -42,6 +42,15 @@
 |---|---|---|---|
 | typescript | `~6.0.3` | vue-tsc 3.3.13 配 TS 7 會直接當掉（找不到 `lib/tsc`），雖然它的 peer 範圍寫 `>=5.0.0`；見 lessons「vue-tsc 3.3 配 TypeScript 7」 | vue-tsc 的發行說明明確支援 TS 7，而且本機 `npm run typecheck` 通過 |
 
+## 已知、但不影響 Windows 版的公告
+
+GitHub 的 Dependabot 看 `Cargo.lock` 的全部內容，不分平台；`cargo deny` 依 `deny.toml` 的 `[graph] targets` 只看 Windows。
+所以下面這些會出現在 repo 的安全通知裡、Verify 卻是綠的。
+
+| 公告 | 套件 | 為什麼不影響 | 什麼時候會消失 |
+|---|---|---|---|
+| GHSA-wrw7-89jp-8q8g（中，unsound：`glib::VariantStrIter` 的迭代器實作） | `glib` 0.18（修於 0.20） | Tauri 在 **Linux** 上經 GTK 3（`gtk` 0.18）拉進來；Windows 版不編譯它，nucifraga 也只支援 Windows。我們升不了：版本由 Tauri 決定 | Tauri 改用 GTK 4／新版 gtk-rs |
+
 ## 刻意不裝的
 
 | 套件 | 理由 |
